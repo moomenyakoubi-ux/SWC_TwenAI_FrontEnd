@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "TwensAi",
+    "slug": "TwensAi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+      
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.momen.ai.TwensAi"
+    },
+    "web": {
+     
+    },
+    "extra": {
+      "eas": {
+        "projectId": "aac8a5f4-a5f1-4c24-ad18-7ec90d83ce7a"
+      }
+    }
+  }
+}
