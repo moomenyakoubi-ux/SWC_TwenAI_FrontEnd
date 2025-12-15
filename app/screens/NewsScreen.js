@@ -6,6 +6,7 @@ import fakeNews from '../data/fakeNews';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const backgroundImage = require('../images/image1.png');
 
@@ -24,7 +25,7 @@ const NewsScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={newsStrings.title} isRTL={isRTL} />
           <View style={styles.container}>
             <FlatList
@@ -66,6 +67,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
+  overlayWeb: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   backgroundImage: {
     resizeMode: 'cover',
     alignSelf: 'center',
@@ -82,6 +86,7 @@ const styles = StyleSheet.create({
   },
   webList: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
 });
 

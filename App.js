@@ -24,7 +24,9 @@ import SupportScreen from './app/screens/SupportScreen';
 import { LanguageProvider, useLanguage } from './app/context/LanguageContext';
 import { ContactsProvider } from './app/context/ContactsContext';
 import ContactsScreen from './app/screens/ContactsScreen';
+import { PostsProvider } from './app/context/PostsContext';
 import theme from './app/styles/theme';
+import WebTabBar from './app/components/WebTabBar';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -43,6 +45,7 @@ const navigationTheme = {
 
 const AppTabs = () => {
   const { strings } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const hiddenTabOptions = {
     tabBarButton: () => null,
     tabBarStyle: { display: 'none' },
@@ -87,8 +90,10 @@ const AppTabs = () => {
     headerShown: false,
   });
 
+  const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} /> } : {};
+
   return (
-    <Tab.Navigator screenOptions={screenOptions}>
+    <Tab.Navigator screenOptions={screenOptions} {...navigatorProps}>
       <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: strings.tabs.home }} />
       <Tab.Screen name="Chat" component={ChatScreen} options={{ tabBarLabel: strings.tabs.chat }} />
       <Tab.Screen name="Notizie" component={NewsScreen} options={{ tabBarLabel: strings.tabs.news }} />
@@ -166,10 +171,12 @@ export default function App() {
   return (
     <LanguageProvider>
       <ContactsProvider>
-        <NavigationContainer theme={navigationTheme}>
-          <StatusBar barStyle="light-content" />
-          <AppTabs />
-        </NavigationContainer>
+        <PostsProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <StatusBar barStyle="light-content" />
+            <AppTabs />
+          </NavigationContainer>
+        </PostsProvider>
       </ContactsProvider>
     </LanguageProvider>
   );

@@ -18,8 +18,9 @@ import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
 import PostCard from '../components/PostCard';
-import fakePosts from '../data/fakePosts';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { usePosts } from '../context/PostsContext';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const ProfileScreen = () => {
   const { strings, isRTL } = useLanguage();
@@ -38,7 +39,7 @@ const ProfileScreen = () => {
   const [nameInput, setNameInput] = useState(profile.name);
   const [bioInput, setBioInput] = useState(profile.bio);
   const [newPost, setNewPost] = useState('');
-  const [posts, setPosts] = useState(fakePosts);
+  const { posts, addPost } = usePosts();
   const [isEditing, setIsEditing] = useState(false);
 
   const initials = useMemo(
@@ -83,6 +84,18 @@ const ProfileScreen = () => {
     }
   };
 
+  const userPosts = useMemo(
+    () =>
+      posts.filter(
+        (post) =>
+          post.author === profile.name ||
+          post.handle === profile.username ||
+          post.handle === profile.name ||
+          post.author === profile.username,
+      ),
+    [posts, profile.name, profile.username],
+  );
+
   const handleAddPost = () => {
     if (!newPost.trim()) return;
     const freshPost = {
@@ -95,12 +108,12 @@ const ProfileScreen = () => {
       reactions: 0,
       comments: 0,
     };
-    setPosts((prev) => [freshPost, ...prev]);
+    addPost(freshPost);
     setNewPost('');
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
       <Navbar title={menuStrings.userProfile} isRTL={isRTL} />
       <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerCard}>
@@ -204,7 +217,7 @@ const ProfileScreen = () => {
 
         <View style={styles.card}>
           <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>I tuoi post</Text>
-          {posts.map((post) => (
+          {userPosts.map((post) => (
             <PostCard key={post.id} post={post} isRTL={isRTL} />
           ))}
         </View>
@@ -224,12 +237,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  safeAreaWeb: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   content: {
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
   },
   webContent: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
   headerCard: {
     backgroundColor: theme.colors.secondary,

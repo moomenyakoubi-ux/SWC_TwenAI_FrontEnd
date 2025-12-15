@@ -72,7 +72,7 @@ const translations = {
       category: 'News',
     },
     experiences: {
-      title: 'Eventi e luoghi',
+      title: 'Esperienze',
       eventsTab: 'Eventi',
       placesTab: 'Luoghi',
     },

@@ -1,24 +1,26 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
+import { Platform, SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const PrivacyPolicyScreen = () => {
   const { strings, isRTL } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const menuStrings = strings.menu;
   const navigation = useNavigation();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
       <Navbar
         title={menuStrings.privacy}
         isRTL={isRTL}
         onBack={() => navigation.navigate('Home')}
         backLabel={strings.tabs.home}
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]}>
         <Text style={[styles.title, isRTL && styles.rtlText]}>{menuStrings.privacy}</Text>
         <Text style={[styles.paragraph, isRTL && styles.rtlText]}>{menuStrings.privacyDescription}</Text>
       </ScrollView>
@@ -31,9 +33,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  webSafeArea: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   content: {
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
+  },
+  webContent: {
+    paddingHorizontal: theme.spacing.xl,
+    width: '100%',
+    maxWidth: 960,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 24,

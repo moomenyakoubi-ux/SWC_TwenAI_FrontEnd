@@ -16,6 +16,7 @@ import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const backgroundImage = require('../images/image2.png');
 
@@ -205,7 +206,7 @@ const ChatScreen = ({ navigation }) => {
   const currentMessages = activeChatId ? conversations[activeChatId] || [] : [];
 
   const ChatList = () => (
-    <View style={styles.listContainer}>
+    <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
       <Text style={[styles.listTitle, isRTL && styles.rtlText]}>{chatStrings.listTitle}</Text>
       <ScrollView contentContainerStyle={styles.chatList} showsVerticalScrollIndicator={false}>
         {chatProfiles.map((chat) => {
@@ -248,7 +249,7 @@ const ChatScreen = ({ navigation }) => {
       style={styles.background}
       imageStyle={styles.backgroundImage}
     >
-      <View style={[styles.overlay, isWeb && styles.overlayWithSidebar]}>
+      <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
         <Navbar
           title={activeChat ? activeChat.name : chatStrings.title}
           isRTL={isRTL}
@@ -263,7 +264,7 @@ const ChatScreen = ({ navigation }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={0}
           >
-            <View style={styles.chatWrapper}>
+            <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
               <View style={[styles.chatHero, isRTL && styles.rowReverse]}>
                 <View style={[styles.avatarLarge, { backgroundColor: activeChat.color }]}>
                   <Text style={styles.avatarLargeText}>{activeChat.name.slice(0, 2).toUpperCase()}</Text>
@@ -291,6 +292,7 @@ const ChatScreen = ({ navigation }) => {
                 )}
               </ScrollView>
               <View style={styles.inputRow}>
+                <View style={[styles.inputRowInner, isWeb && styles.inputRowWeb]}>
                 <TextInput
                   style={styles.input}
                   value={input}
@@ -307,6 +309,7 @@ const ChatScreen = ({ navigation }) => {
                 <TouchableOpacity style={styles.sendButton} onPress={() => handleSend()}>
                   <Ionicons name="send" size={20} color={theme.colors.card} />
                 </TouchableOpacity>
+                </View>
               </View>
             </View>
           </KeyboardAvoidingView>
@@ -337,13 +340,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(12, 27, 51, 0.78)',
   },
-  overlayWithSidebar: {
-    paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+  overlayWeb: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
   },
   listContainer: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.lg,
+  },
+  webMaxWidth: {
+    width: '100%',
+    maxWidth: 1080,
+    alignSelf: 'center',
   },
   listTitle: {
     color: theme.colors.card,
@@ -522,6 +530,16 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     ...theme.shadow.card,
   },
+  inputRowInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  inputRowWeb: {
+    maxWidth: 960,
+    alignSelf: 'center',
+    width: '100%',
+  },
   input: {
     flex: 1,
     minHeight: 44,
@@ -540,6 +558,10 @@ const styles = StyleSheet.create({
   rtlText: {
     textAlign: 'right',
     writingDirection: 'rtl',
+  },
+  webContentPadding: {
+    paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
 });
 

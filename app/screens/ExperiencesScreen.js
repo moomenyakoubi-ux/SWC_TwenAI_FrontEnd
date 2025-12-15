@@ -7,6 +7,7 @@ import fakePlaces from '../data/fakePlaces';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const backgroundImage = require('../images/image1.png');
 
@@ -30,14 +31,14 @@ const ExperiencesScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={experiencesStrings.title} isRTL={isRTL} />
           <View style={[styles.container, isWeb && styles.webContainer]}>
             <View style={[styles.tabRow, isRTL && styles.rowReverse]}>
               {tabs.map((tabKey) => (
                 <TouchableOpacity
                   key={tabKey}
-                  style={[styles.tab, activeTab === tabKey && styles.activeTab]}
+                  style={[styles.tab, activeTab === tabKey && styles.activeTab, isWeb && styles.tabWeb]}
                   onPress={() => setActiveTab(tabKey)}
                 >
                   <Text
@@ -57,17 +58,19 @@ const ExperiencesScreen = ({ navigation }) => {
               data={data}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <Card
-                  title={item.title || item.name}
-                  description={item.description}
-                  image={item.image}
-                  subtitle={
-                    activeTab === 'events'
-                      ? `${item.city} • ${item.date}`
-                      : `${item.type} • ${item.address}`
-                  }
-                  isRTL={isRTL}
-                />
+                <View style={[styles.cardWrapper, isWeb && styles.cardWrapperWeb]}>
+                  <Card
+                    title={item.title || item.name}
+                    description={item.description}
+                    image={item.image}
+                    subtitle={
+                      activeTab === 'events'
+                        ? `${item.city} • ${item.date}`
+                        : `${item.type} • ${item.address}`
+                    }
+                    isRTL={isRTL}
+                  />
+                </View>
               )}
               contentContainerStyle={[styles.list, isWeb && styles.webList]}
               showsVerticalScrollIndicator={false}
@@ -96,6 +99,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
+  overlayWeb: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   backgroundImage: {
     resizeMode: 'cover',
     alignSelf: 'center',
@@ -108,18 +114,21 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.md,
   },
   webContainer: {
-    paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
   },
   list: {
     paddingBottom: theme.spacing.xl,
   },
   webList: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
   tabRow: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
     marginBottom: theme.spacing.md,
+    alignItems: 'center',
   },
   tab: {
     flex: 1,
@@ -127,6 +136,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     backgroundColor: 'rgba(12, 27, 51, 0.05)',
     alignItems: 'center',
+  },
+  tabWeb: {
+    maxWidth: 420,
   },
   activeTab: {
     backgroundColor: theme.colors.secondary,
@@ -144,6 +156,12 @@ const styles = StyleSheet.create({
   rtlText: {
     textAlign: 'right',
     writingDirection: 'rtl',
+  },
+  cardWrapper: {
+    width: '100%',
+  },
+  cardWrapperWeb: {
+    width: '100%',
   },
 });
 

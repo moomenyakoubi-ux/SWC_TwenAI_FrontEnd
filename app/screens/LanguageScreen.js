@@ -1,12 +1,14 @@
 import React from 'react';
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const LanguageScreen = () => {
   const { language, setLanguage, strings, isRTL } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const { language: languageStrings } = strings;
   const navigation = useNavigation();
 
@@ -16,14 +18,14 @@ const LanguageScreen = () => {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
       <Navbar
         title={languageStrings.title}
         isRTL={isRTL}
         onBack={() => navigation.navigate('Home')}
         backLabel={strings.tabs.home}
       />
-      <View style={styles.container}>
+      <View style={[styles.container, isWeb && styles.webContainer]}>
         <Text style={[styles.description, isRTL && styles.rtlText]}>{languageStrings.description}</Text>
         <View style={styles.options}>
           {options.map((option) => {
@@ -57,10 +59,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  webSafeArea: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   container: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.lg,
+  },
+  webContainer: {
+    paddingHorizontal: theme.spacing.xl,
+    width: '100%',
+    maxWidth: 900,
+    alignSelf: 'center',
   },
   description: {
     fontSize: 16,

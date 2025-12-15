@@ -18,6 +18,7 @@ import fakeTravel from '../data/fakeTravel';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const backgroundImage = require('../images/image1.png');
 
@@ -155,7 +156,7 @@ const TravelScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             data={filteredTrips}
@@ -163,7 +164,7 @@ const TravelScreen = ({ navigation }) => {
             renderItem={renderTrip}
             contentContainerStyle={[styles.list, isWeb && styles.webList]}
             ListHeaderComponent={
-              <View style={styles.filtersContainer}>
+              <View style={[styles.filtersContainer, isWeb && styles.filtersWeb]}>
                 <Text style={[styles.heading, isRTL && styles.rtlText]}>{travelStrings.searchTitle}</Text>
                 <Text style={[styles.subtitle, isRTL && styles.rtlText]}>{travelStrings.searchSubtitle}</Text>
 
@@ -244,6 +245,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
+  overlayWeb: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   backgroundImage: {
     resizeMode: 'cover',
     alignSelf: 'center',
@@ -256,10 +260,17 @@ const styles = StyleSheet.create({
   },
   webList: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
   filtersContainer: {
     paddingTop: theme.spacing.md,
     gap: theme.spacing.sm,
+  },
+  filtersWeb: {
+    paddingHorizontal: theme.spacing.xl,
+    maxWidth: 980,
+    width: '100%',
+    alignSelf: 'center',
   },
   heading: {
     fontSize: 24,

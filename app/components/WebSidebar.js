@@ -21,7 +21,7 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
   if (Platform.OS !== 'web') return null;
 
   return (
-    <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl]}>
+    <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, Platform.OS === 'web' && styles.sideMenuWeb]}>
       <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{title}</Text>
       <View style={styles.menuItems}>
         {getMenuItems(menuStrings).map((item) => (
@@ -51,6 +51,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
     ...theme.shadow.card,
     gap: theme.spacing.lg,
+  },
+  sideMenuWeb: {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    height: '100vh',
+    zIndex: 9999,
   },
   sideMenuRtl: {
     alignItems: 'flex-end',

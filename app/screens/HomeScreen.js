@@ -16,11 +16,12 @@ import PostCard from '../components/PostCard';
 import fakeNews from '../data/fakeNews';
 import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
-import fakePosts from '../data/fakePosts';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { useContacts } from '../context/ContactsContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { usePosts } from '../context/PostsContext';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const backgroundImage = require('../images/image1.png');
 
@@ -31,6 +32,7 @@ const HomeScreen = ({ navigation }) => {
   const { strings, isRTL } = useLanguage();
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
+  const { posts } = usePosts();
   const [isMenuOpen, setIsMenuOpen] = useState(isWeb);
   const sideMenuWidth = isWeb ? WEB_SIDE_MENU_WIDTH : 280;
   const slideAnim = useRef(new Animated.Value(isWeb ? 1 : 0)).current;
@@ -61,7 +63,7 @@ const HomeScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <View style={styles.overlay}>
-        <View style={[styles.header, isRTL && styles.headerRtl]}>
+        <View style={[styles.header, isRTL && styles.headerRtl, isWeb && styles.headerWeb]}>
           <View style={styles.headerText}>
             <Text style={[styles.greeting, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
             <Text style={[styles.subtitle, isRTL && styles.rtlText]}>{homeStrings.subtitle}</Text>
@@ -79,7 +81,10 @@ const HomeScreen = ({ navigation }) => {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            isWeb && { paddingRight: sideMenuWidth + theme.spacing.lg },
+            isWeb && {
+              paddingRight: sideMenuWidth + theme.spacing.lg,
+              paddingLeft: WEB_TAB_BAR_WIDTH + theme.spacing.lg,
+            },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -112,29 +117,22 @@ const HomeScreen = ({ navigation }) => {
           />
 
           <SectionHeader title={homeStrings.communityPosts} isRTL={isRTL} />
-          {fakePosts
-            .filter((post) => {
-              const profile = profiles.find(
-                (item) => item.handle === post.handle || item.username === post.handle || item.name === post.author,
-              );
-              return profile?.isContact;
-            })
-            .map((post) => {
-              const profile = profiles.find(
-                (item) => item.handle === post.handle || item.username === post.handle || item.name === post.author,
-              );
+          {posts.map((post) => {
+            const profile = profiles.find(
+              (item) => item.handle === post.handle || item.username === post.handle || item.name === post.author,
+            );
 
-              return (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  isRTL={isRTL}
-                  onPressAuthor={
-                    profile ? () => navigation.navigate('PublicProfile', { profileId: profile.id }) : undefined
-                  }
-                />
-              );
-            })}
+            return (
+              <PostCard
+                key={post.id}
+                post={post}
+                isRTL={isRTL}
+                onPressAuthor={
+                  profile ? () => navigation.navigate('PublicProfile', { profileId: profile.id }) : undefined
+                }
+              />
+            );
+          })}
 
         </ScrollView>
 
@@ -145,6 +143,7 @@ const HomeScreen = ({ navigation }) => {
           style={[
             styles.sideMenu,
             { width: sideMenuWidth },
+            isWeb && styles.sideMenuWeb,
             {
               transform: [
                 {
@@ -212,6 +211,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg,
     marginBottom: theme.spacing.md,
   },
+  headerWeb: {
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
+  },
   headerRtl: {
     flexDirection: 'row-reverse',
   },
@@ -266,6 +268,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
     ...theme.shadow.card,
     gap: theme.spacing.lg,
+  },
+  sideMenuWeb: {
+    right: 0,
   },
   menuTitle: {
     fontSize: 22,

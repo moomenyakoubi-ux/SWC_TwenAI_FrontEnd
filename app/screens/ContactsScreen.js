@@ -1,15 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { useContacts } from '../context/ContactsContext';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const ContactsScreen = () => {
   const navigation = useNavigation();
   const { strings, isRTL } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const { contacts, toggleContact } = useContacts();
   const [query, setQuery] = useState('');
   const title = strings.menu?.contacts || 'Contatti';
@@ -25,14 +27,14 @@ const ContactsScreen = () => {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
       <Navbar
         title={title}
         isRTL={isRTL}
         onBack={() => navigation.goBack()}
         backLabel={strings.tabs?.home}
       />
-      <View style={styles.container}>
+      <View style={[styles.container, isWeb && styles.webContainer]}>
         <View style={[styles.searchBox, isRTL && styles.rowReverse]}>
           <Ionicons name="search" size={18} color={theme.colors.muted} />
           <TextInput
@@ -87,10 +89,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  webSafeArea: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   container: {
     flex: 1,
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
+  },
+  webContainer: {
+    paddingHorizontal: theme.spacing.xl,
+    width: '100%',
+    maxWidth: 1100,
+    alignSelf: 'center',
   },
   searchBox: {
     flexDirection: 'row',

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const SettingRow = ({ icon, label, description, value, onToggle, isRTL }) => (
   <View style={[styles.settingRow, isRTL && styles.rowReverse]}>
@@ -26,6 +27,7 @@ const SettingRow = ({ icon, label, description, value, onToggle, isRTL }) => (
 
 const AccountSettingsScreen = () => {
   const { strings, isRTL } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const menuStrings = strings.menu;
   const navigation = useNavigation();
   const [notifications, setNotifications] = useState(true);
@@ -34,14 +36,17 @@ const AccountSettingsScreen = () => {
   const [newsletter, setNewsletter] = useState(false);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
       <Navbar
         title={menuStrings.accountSettings}
         isRTL={isRTL}
         onBack={() => navigation.navigate('Home')}
         backLabel={strings.tabs.home}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, isWeb && styles.webContent]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.card}>
           <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Preferenze</Text>
           <SettingRow
@@ -111,9 +116,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  webSafeArea: {
+    paddingLeft: WEB_TAB_BAR_WIDTH,
+  },
   content: {
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
+  },
+  webContent: {
+    paddingHorizontal: theme.spacing.xl,
+    width: '100%',
+    maxWidth: 1100,
+    alignSelf: 'center',
   },
   card: {
     backgroundColor: '#fff',

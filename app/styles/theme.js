@@ -6,6 +6,7 @@ const colors = {
   text: '#0E141B',
   muted: '#7A869A',
   accent: '#F2A365',
+  border: 'rgba(12,27,51,0.12)',
 };
 
 const spacing = {
