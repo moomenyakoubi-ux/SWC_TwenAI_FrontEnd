@@ -41,7 +41,7 @@ const translations = {
     chat: {
       title: 'Chat',
       listTitle: 'Chat recenti',
-      aiTitle: 'Chat AI',
+      aiTitle: 'TwensAi · Assistente',
       statusOnline: 'Online',
       statusOffline: 'Ultimo accesso',
       placeholder: 'Scrivi un messaggio...',
@@ -49,7 +49,7 @@ const translations = {
         {
           id: 'm-1',
           sender: 'ai',
-          text: 'Ciao! Sono qui per aiutarti con notizie, eventi e consigli sulla comunità tunisina in Italia.',
+          text: 'Ciao! Sono TwensAi, ti aiuto con notizie, eventi e consigli sulla comunità tunisina in Italia.',
         },
         {
           id: 'm-2',
@@ -62,7 +62,7 @@ const translations = {
           text: 'Prova "La Medina" in Viale Monza: cous cous, brik e musica dal vivo il venerdì.',
         },
       ],
-      aiReply: 'Grazie per il messaggio! Posso suggerirti festival, voli o eventi vicini.',
+      aiReply: 'Grazie per il messaggio! Sono TwensAi e posso suggerirti festival, voli o eventi vicini.',
       typing: 'Sta scrivendo...',
       openChat: 'Apri chat',
       backToList: 'Tutte le chat',
@@ -160,7 +160,7 @@ const translations = {
     chat: {
       title: 'المحادثات',
       listTitle: 'الدردشات الأخيرة',
-      aiTitle: 'محادثة الذكاء الاصطناعي',
+      aiTitle: 'TwensAi · المساعد',
       statusOnline: 'متصل',
       statusOffline: 'آخر ظهور',
       placeholder: 'اكتب رسالة...',
@@ -168,7 +168,7 @@ const translations = {
         {
           id: 'm-1',
           sender: 'ai',
-          text: 'مرحباً! أنا هنا لأساعدك بالأخبار والفعاليات والنصائح للجالية التونسية في إيطاليا.',
+          text: 'مرحباً! أنا TwensAi هنا لأساعدك بالأخبار والفعاليات والنصائح للجالية التونسية في إيطاليا.',
         },
         {
           id: 'm-2',
@@ -181,7 +181,7 @@ const translations = {
           text: 'جرّب "المدينة" في فيالي مونزا: كسكسي وبريك وموسيقى حية مساء الجمعة.',
         },
       ],
-      aiReply: 'شكراً على رسالتك! أستطيع اقتراح مهرجانات أو رحلات أو فعاليات قريبة.',
+      aiReply: 'شكراً على رسالتك! أنا TwensAi وأستطيع اقتراح مهرجانات أو رحلات أو فعاليات قريبة.',
       typing: 'يكتب الآن...',
       openChat: 'افتح المحادثة',
       backToList: 'كل الدردشات',

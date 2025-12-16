@@ -33,49 +33,206 @@ const ChatScreen = ({ navigation }) => {
   const scrollRef = useRef(null);
   const replyTimeoutRef = useRef(null);
 
-  const chatProfiles = useMemo(
-    () => [
+  const chatProfiles = useMemo(() => {
+    const pinnedAiChat = {
+      id: 'ai',
+      name: 'TwensAi',
+      subtitle: chatStrings.aiTitle,
+      status: chatStrings.statusOnline,
+      lastMessage: chatStrings.initialMessages[chatStrings.initialMessages.length - 1]?.text,
+      color: '#D72323',
+      initialMessages: chatStrings.initialMessages,
+      autoReply: chatStrings.aiReply,
+      pinned: true,
+    };
+
+    const orderedChats = [
       {
-        id: 'ai',
-        name: 'Ahna AI',
-        subtitle: chatStrings.aiTitle,
-        status: chatStrings.statusOnline,
-        lastMessage: chatStrings.initialMessages[chatStrings.initialMessages.length - 1]?.text,
-        color: '#D72323',
-        initialMessages: chatStrings.initialMessages,
-        autoReply: chatStrings.aiReply,
-      },
-      {
-        id: 'kader',
-        name: 'Kader',
-        subtitle: 'Chef a Milano',
-        status: `${chatStrings.statusOffline} 09:45`,
-        lastMessage: 'Ho nuove ricette tunisine da condividere!',
+        id: 'youssef',
+        name: 'Youssef Ben Ali',
+        subtitle: 'Milano · food & tech',
+        status: `${chatStrings.statusOffline} 10:20`,
         color: '#0C1B33',
         initialMessages: [
-          { id: 'k-1', sender: 'ai', text: 'Ehi! Hai provato il cous cous con harissa leggera?' },
-          { id: 'k-2', sender: 'user', text: 'Non ancora, consigli su come farlo più speziato?' },
-          { id: 'k-3', sender: 'ai', text: 'Aggiungi un cucchiaino di tabil e un filo di limone.' },
+          { id: 'y-1', sender: 'ai', text: 'Hey Youssef, hai trovato volontari per il pranzo tech?' },
+          { id: 'y-2', sender: 'user', text: 'Sto cercando un fotografo per l\'evento di domenica.' },
+          { id: 'y-3', sender: 'ai', text: 'Posso segnalarne due a Milano, vuoi i contatti?' },
         ],
-        autoReply: 'Ti mando presto altre ricette e idee per il menù!',
+        autoReply: 'Aggiungo altri contatti di fotografi e mentor per il meetup.',
+      },
+      {
+        id: 'amina',
+        name: 'Amina Trabelsi',
+        subtitle: 'Torino · arte & cultura',
+        status: `${chatStrings.statusOffline} 10:05`,
+        color: '#F2A365',
+        initialMessages: [
+          { id: 'am-1', sender: 'ai', text: 'Ciao Amina, come procede la mostra itinerante?' },
+          { id: 'am-2', sender: 'user', text: 'Sto cercando volontari bilingui per l\'allestimento.' },
+          { id: 'am-3', sender: 'ai', text: 'Ti invio una lista di studenti tunisini a Torino disponibili nel weekend.' },
+        ],
+        autoReply: 'Ti segnalo volontari bilingui e allestitori a Torino.',
+      },
+      {
+        id: 'luca',
+        name: 'Luca Kader',
+        subtitle: 'Roma · community & eventi',
+        status: `${chatStrings.statusOffline} 09:55`,
+        color: '#D72323',
+        initialMessages: [
+          { id: 'lk-1', sender: 'ai', text: 'Luca, il festival di teatro tunisino ha bisogno di sponsor?' },
+          { id: 'lk-2', sender: 'user', text: 'Sì, sto cercando due sponsor locali e un media partner.' },
+          { id: 'lk-3', sender: 'ai', text: 'Posso proporti contatti tra coworking e radio community a Roma.' },
+        ],
+        autoReply: 'Raccolgo sponsor e location disponibili per il festival a Roma.',
       },
       {
         id: 'sara',
-        name: 'Sara',
-        subtitle: 'Community manager',
-        status: `${chatStrings.statusOffline} 08:10`,
-        lastMessage: 'Organizziamo il meetup di sabato a Roma?',
+        name: 'Sara Mahmoud',
+        subtitle: 'Bologna · startup & viaggi',
+        status: `${chatStrings.statusOffline} 09:40`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'sm-1', sender: 'ai', text: 'Ciao Sara, hai fissato il workshop di product discovery?' },
+          { id: 'sm-2', sender: 'user', text: 'Sto scegliendo la data, vorrei coinvolgere studenti tunisini.' },
+          { id: 'sm-3', sender: 'ai', text: 'Segnalo le community universitarie di Bologna per riempire la sala.' },
+        ],
+        autoReply: 'Posso invitare gruppi di studenti e startup tunisine interessate.',
+      },
+      {
+        id: 'kader',
+        name: 'Kader Ben Ali',
+        subtitle: 'Torino · cucina & viaggi',
+        status: `${chatStrings.statusOffline} 09:18`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'kb-1', sender: 'ai', text: 'Kader, come è andato il tour gastronomico di ieri?' },
+          { id: 'kb-2', sender: 'user', text: 'Grande! Ora voglio organizzare una cena harissa & vino.' },
+          { id: 'kb-3', sender: 'ai', text: 'Ti mando locali a Torino con cucina aperta fino a tardi.' },
+        ],
+        autoReply: 'Raccolgo ristoranti e contatti per la tua cena tunisina a Torino.',
+      },
+      {
+        id: 'meriem',
+        name: 'Meriem Azzabi',
+        subtitle: 'Genova · mare & cucina',
+        status: `${chatStrings.statusOffline} 08:50`,
+        color: '#D72323',
+        initialMessages: [
+          { id: 'ma-1', sender: 'ai', text: 'Hey Meriem, hai scelto il menu per il tour gastronomico?' },
+          { id: 'ma-2', sender: 'user', text: 'Sto pensando a cous cous di pesce con degustazione.' },
+          { id: 'ma-3', sender: 'ai', text: 'Ottimo, ti suggerisco due pescherie tunisine a Genova.' },
+        ],
+        autoReply: 'Aggiungo fornitori e location sul mare per il tuo laboratorio di cucina.',
+      },
+      {
+        id: 'karim',
+        name: 'Karim Laarbi',
+        subtitle: 'Napoli · musica & eventi',
+        status: `${chatStrings.statusOffline} 08:32`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'kl-1', sender: 'ai', text: 'Ciao Karim, serve supporto per la serata oud + elettronica?' },
+          { id: 'kl-2', sender: 'user', text: 'Mi manca un videomaker e qualcuno per il live streaming.' },
+          { id: 'kl-3', sender: 'ai', text: 'Posso invitare due creator tunisini a Napoli per il set.' },
+        ],
+        autoReply: 'Contatto videomaker e creator per promuovere la tua serata a Napoli.',
+      },
+      {
+        id: 'rania',
+        name: 'Rania Jemai',
+        subtitle: 'Padova · startup & mentoring',
+        status: `${chatStrings.statusOffline} 08:20`,
         color: '#F2A365',
         initialMessages: [
-          { id: 's-1', sender: 'ai', text: 'Ciao! Sto preparando la lista dei partecipanti al meetup.' },
-          { id: 's-2', sender: 'user', text: 'Perfetto, vuoi che porti qualcosa?' },
-          { id: 's-3', sender: 'ai', text: 'Un dolce tunisino sarebbe apprezzatissimo!' },
+          { id: 'rj-1', sender: 'ai', text: 'Rania, hai già i team per il percorso di accelerazione?' },
+          { id: 'rj-2', sender: 'user', text: 'Sto valutando due startup italo-tunisine.' },
+          { id: 'rj-3', sender: 'ai', text: 'Posso presentarti mentor in fintech e travel da Padova.' },
         ],
-        autoReply: 'Grazie! Aggiungo il tuo nome all\'evento e condivido i dettagli.',
+        autoReply: 'Metto in contatto i team con mentor e investitori interessati.',
       },
-    ],
-    [chatStrings],
-  );
+      {
+        id: 'walid',
+        name: 'Walid Chouchane',
+        subtitle: 'Cagliari · mare & sport',
+        status: `${chatStrings.statusOffline} 08:05`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'wc-1', sender: 'ai', text: 'Hey Walid, pronti per il weekend di surf?' },
+          { id: 'wc-2', sender: 'user', text: 'Sì, ma mi servono alloggi per due famiglie tunisine.' },
+          { id: 'wc-3', sender: 'ai', text: 'Ti invio B&B e case vacanza vicine agli spot migliori.' },
+        ],
+        autoReply: 'Cerco alloggi family-friendly vicino agli spot di surf in Sardegna.',
+      },
+      {
+        id: 'omar',
+        name: 'Omar Tounsi',
+        subtitle: 'Trieste · logistica & viaggi',
+        status: `${chatStrings.statusOffline} 07:55`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'ot-1', sender: 'ai', text: 'Ciao Omar, hai aggiornato la guida alle tratte navali?' },
+          { id: 'ot-2', sender: 'user', text: 'Sto confrontando due compagnie per studenti.' },
+          { id: 'ot-3', sender: 'ai', text: 'Posso inviarti prezzi e orari aggiornati per Trieste ↔ Tunisi.' },
+        ],
+        autoReply: 'Raccolgo tariffe studentesche e link per prenotare rapidamente.',
+      },
+      {
+        id: 'leila',
+        name: 'Leila Ben Amor',
+        subtitle: 'Lecce · cibo & storytelling',
+        status: `${chatStrings.statusOffline} 07:40`,
+        color: '#F2A365',
+        initialMessages: [
+          { id: 'lba-1', sender: 'ai', text: 'Leila, hai pubblicato la ricetta della harissa con frisella?' },
+          { id: 'lba-2', sender: 'user', text: 'Quasi, sto cercando foto e un video breve.' },
+          { id: 'lba-3', sender: 'ai', text: 'Ti mando esempi e un template per il reel.' },
+        ],
+        autoReply: 'Preparo idee e template per raccontare la tua ricetta salentina-tunisina.',
+      },
+      {
+        id: 'adel',
+        name: 'Adel Fradi',
+        subtitle: 'Bari · porti & scambi',
+        status: `${chatStrings.statusOffline} 07:25`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'af-1', sender: 'ai', text: 'Ciao Adel, come procede il meetup tra operatori portuali?' },
+          { id: 'af-2', sender: 'user', text: 'Mi servono badge e lista invitati aggiornata.' },
+          { id: 'af-3', sender: 'ai', text: 'Aggiorno la lista e preparo un reminder via email.' },
+        ],
+        autoReply: 'Organizzo reminder e badge per il meetup logistico a Bari.',
+      },
+      {
+        id: 'majdi',
+        name: 'Majdi Ayari',
+        subtitle: 'Ancona · traghetti & viaggi',
+        status: `${chatStrings.statusOffline} 07:10`,
+        color: '#0C1B33',
+        initialMessages: [
+          { id: 'mj-1', sender: 'ai', text: 'Majdi, hai aggiornato le offerte per Ancona-Tunisi?' },
+          { id: 'mj-2', sender: 'user', text: 'Sto cercando cabine family disponibili a luglio.' },
+          { id: 'mj-3', sender: 'ai', text: 'Controllo gli operatori con cabine familiari e ti mando i link.' },
+        ],
+        autoReply: 'Ti giro le migliori offerte di cabine family sulla tratta Ancona ↔ Tunisi.',
+      },
+      {
+        id: 'hana',
+        name: 'Hana Ben Said',
+        subtitle: 'Bergamo · eventi & community',
+        status: `${chatStrings.statusOffline} 06:55`,
+        color: '#F2A365',
+        initialMessages: [
+          { id: 'hb-1', sender: 'ai', text: 'Hana, hai trovato la location per l\'aperitivo culturale?' },
+          { id: 'hb-2', sender: 'user', text: 'Ho due opzioni ma vorrei musica dal vivo.' },
+          { id: 'hb-3', sender: 'ai', text: 'Posso suggerire un duo acustico tunisino di Bergamo.' },
+        ],
+        autoReply: 'Cerco location e musica live per il tuo aperitivo culturale a Bergamo.',
+      },
+    ];
+
+    return [pinnedAiChat, ...orderedChats];
+  }, [chatStrings]);
 
   useEffect(() => {
     const initialState = chatProfiles.reduce((acc, chat) => {
