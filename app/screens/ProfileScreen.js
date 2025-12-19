@@ -112,6 +112,7 @@ const ProfileScreen = () => {
     setNewPost('');
   };
 
+
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
       <Navbar title={menuStrings.userProfile} isRTL={isRTL} />

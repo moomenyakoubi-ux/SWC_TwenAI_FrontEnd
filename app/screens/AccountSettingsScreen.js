@@ -1,9 +1,20 @@
 import React, { useState } from 'react';
-import { Platform, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
+import { signOut } from '../auth/authApi';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
@@ -34,6 +45,17 @@ const AccountSettingsScreen = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [locationSharing, setLocationSharing] = useState(true);
   const [newsletter, setNewsletter] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  const handleLogout = async () => {
+    if (logoutLoading) return;
+    setLogoutLoading(true);
+    const { error } = await signOut();
+    if (error) {
+      Alert.alert('Errore', error.message);
+    }
+    setLogoutLoading(false);
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
@@ -92,6 +114,14 @@ const AccountSettingsScreen = () => {
           <TouchableOpacity style={[styles.actionRow, isRTL && styles.rowReverse]}>
             <Ionicons name="shield-checkmark" size={20} color={theme.colors.secondary} />
             <Text style={[styles.actionText, isRTL && styles.rtlText]}>Verifica in due passaggi</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.logoutRow, logoutLoading && styles.logoutDisabled, isRTL && styles.rowReverse]}
+            onPress={handleLogout}
+            disabled={logoutLoading}
+          >
+            <Ionicons name="log-out-outline" size={20} color={theme.colors.card} />
+            <Text style={[styles.logoutText, isRTL && styles.rtlText]}>Logout</Text>
           </TouchableOpacity>
         </View>
 
@@ -175,6 +205,22 @@ const styles = StyleSheet.create({
   actionText: {
     color: theme.colors.secondary,
     fontWeight: '600',
+  },
+  logoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+  },
+  logoutText: {
+    color: theme.colors.card,
+    fontWeight: '700',
+  },
+  logoutDisabled: {
+    opacity: 0.7,
   },
   rowReverse: {
     flexDirection: 'row-reverse',

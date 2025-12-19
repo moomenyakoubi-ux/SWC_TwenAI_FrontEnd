@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { Platform, StatusBar } from 'react-native';
+import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
 import { NavigationContainer, DefaultTheme as NavigationTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +27,8 @@ import ContactsScreen from './app/screens/ContactsScreen';
 import { PostsProvider } from './app/context/PostsContext';
 import theme from './app/styles/theme';
 import WebTabBar from './app/components/WebTabBar';
+import AuthScreen from './app/screens/AuthScreen';
+import useSession from './app/auth/useSession';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -163,6 +165,31 @@ const AppTabs = () => {
   );
 };
 
+const MainApp = () => (
+  <NavigationContainer theme={navigationTheme}>
+    <StatusBar barStyle="light-content" />
+    <AppTabs />
+  </NavigationContainer>
+);
+
+const AppContent = () => {
+  const { user, loading } = useSession();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.secondary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  return <MainApp />;
+};
+
 export default function App() {
   useEffect(() => {
     Asset.loadAsync([sharedBackgroundAsset, chatBackgroundAsset]);
@@ -172,10 +199,7 @@ export default function App() {
     <LanguageProvider>
       <ContactsProvider>
         <PostsProvider>
-          <NavigationContainer theme={navigationTheme}>
-            <StatusBar barStyle="light-content" />
-            <AppTabs />
-          </NavigationContainer>
+          <AppContent />
         </PostsProvider>
       </ContactsProvider>
     </LanguageProvider>
