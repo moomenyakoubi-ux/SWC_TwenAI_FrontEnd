@@ -17,6 +17,7 @@ import theme from '../styles/theme';
 import { signOut } from '../auth/authApi';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import useSession from '../auth/useSession';
 
 const SettingRow = ({ icon, label, description, value, onToggle, isRTL }) => (
   <View style={[styles.settingRow, isRTL && styles.rowReverse]}>
@@ -41,6 +42,7 @@ const AccountSettingsScreen = () => {
   const isWeb = Platform.OS === 'web';
   const menuStrings = strings.menu;
   const navigation = useNavigation();
+  const { user } = useSession();
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [locationSharing, setLocationSharing] = useState(true);
@@ -107,6 +109,10 @@ const AccountSettingsScreen = () => {
 
         <View style={styles.card}>
           <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Sicurezza</Text>
+          <View style={styles.fieldRow}>
+            <Text style={[styles.fieldLabel, isRTL && styles.rtlText]}>Email</Text>
+            <Text style={[styles.fieldValue, isRTL && styles.rtlText]}>{user?.email || '-'}</Text>
+          </View>
           <TouchableOpacity style={[styles.actionRow, isRTL && styles.rowReverse]}>
             <Ionicons name="key" size={20} color={theme.colors.secondary} />
             <Text style={[styles.actionText, isRTL && styles.rtlText]}>Cambia password</Text>
@@ -195,6 +201,17 @@ const styles = StyleSheet.create({
   },
   settingDescription: {
     color: theme.colors.muted,
+  },
+  fieldRow: {
+    gap: 4,
+  },
+  fieldLabel: {
+    color: theme.colors.muted,
+    fontWeight: '700',
+  },
+  fieldValue: {
+    color: theme.colors.text,
+    fontWeight: '600',
   },
   actionRow: {
     flexDirection: 'row',

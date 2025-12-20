@@ -1,13 +1,17 @@
 import React from 'react';
-import { Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import useSession from '../auth/useSession';
+import useProfile from '../profile/useProfile';
 
 const LanguageScreen = () => {
   const { language, setLanguage, strings, isRTL } = useLanguage();
+  const { user } = useSession();
+  const { updateProfile } = useProfile();
   const isWeb = Platform.OS === 'web';
   const { language: languageStrings } = strings;
   const navigation = useNavigation();
@@ -16,6 +20,16 @@ const LanguageScreen = () => {
     { code: 'it', label: languageStrings.italian },
     { code: 'ar', label: languageStrings.arabic },
   ];
+
+  const handleSelectLanguage = async (code) => {
+    setLanguage(code);
+    if (!user) return;
+    try {
+      await updateProfile({ language: code });
+    } catch (updateError) {
+      Alert.alert('Errore', updateError.message);
+    }
+  };
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
@@ -34,7 +48,7 @@ const LanguageScreen = () => {
               <TouchableOpacity
                 key={option.code}
                 style={[styles.option, isActive && styles.optionActive]}
-                onPress={() => setLanguage(option.code)}
+                onPress={() => handleSelectLanguage(option.code)}
               >
                 <Text
                   style={[styles.optionLabel, isActive && styles.optionLabelActive, isRTL && styles.optionLabelRtl]}

@@ -29,6 +29,7 @@ import theme from './app/styles/theme';
 import WebTabBar from './app/components/WebTabBar';
 import AuthScreen from './app/screens/AuthScreen';
 import useSession from './app/auth/useSession';
+import useProfile from './app/profile/useProfile';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -172,6 +173,19 @@ const MainApp = () => (
   </NavigationContainer>
 );
 
+const ProfileLanguageSync = () => {
+  const { profile } = useProfile();
+  const { language, setLanguage } = useLanguage();
+
+  useEffect(() => {
+    if (!profile?.language) return;
+    if (profile.language === language) return;
+    setLanguage(profile.language);
+  }, [language, profile?.language, setLanguage]);
+
+  return null;
+};
+
 const AppContent = () => {
   const { user, loading } = useSession();
 
@@ -187,7 +201,12 @@ const AppContent = () => {
     return <AuthScreen />;
   }
 
-  return <MainApp />;
+  return (
+    <>
+      <ProfileLanguageSync />
+      <MainApp />
+    </>
+  );
 };
 
 export default function App() {
