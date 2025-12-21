@@ -219,9 +219,12 @@ export const PostsProvider = ({ children }) => {
         return { error: uploadError };
       }
 
+      const mediaType = blob.type?.startsWith('video') ? 'video' : 'image';
+      console.log('POST_MEDIA INSERT', { path, blobType: blob.type, mediaType });
       const { error: mediaError } = await supabase.from('post_media').insert({
         post_id: inserted.id,
-        media_type: blob.type || 'image/jpeg',
+        author_id: user.id,
+        media_type: mediaType,
         bucket: 'post_media',
         path,
       });
