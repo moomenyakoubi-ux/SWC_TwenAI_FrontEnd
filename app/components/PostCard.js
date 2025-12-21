@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../styles/theme';
 import { usePosts } from '../context/PostsContext';
@@ -17,7 +17,8 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     [post.author],
   );
 
-  const { toggleLike, addComment, selfUser } = usePosts();
+  const { toggleLike, addComment, selfUser, updatePost, deletePost } = usePosts();
+  const isOwner = post.authorId && post.authorId === selfUser.id;
 
   const initialLiked = useMemo(
     () => post.likes?.some((user) => user.userId === selfUser.id),
@@ -32,6 +33,58 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   const [showComments, setShowComments] = useState(false);
   const [showLikes, setShowLikes] = useState(false);
   const [commentDraft, setCommentDraft] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(post.content || '');
+  const [editError, setEditError] = useState(null);
+  const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditDraft(post.content || '');
+    }
+  }, [isEditing, post.content]);
+
+  const handleSaveEdit = async () => {
+    if (!isOwner || updating) return;
+    setUpdating(true);
+    setEditError(null);
+    const { error } = await updatePost({ postId: post.id, content: editDraft });
+    if (error) {
+      setEditError(error);
+    } else {
+      setIsEditing(false);
+    }
+    setUpdating(false);
+  };
+
+  const handleDelete = () => {
+    if (!isOwner || deleting) return;
+    const performDelete = async () => {
+      setDeleting(true);
+      const { error } = await deletePost({ postId: post.id });
+      if (error) {
+        setEditError(error);
+      }
+      setDeleting(false);
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Vuoi eliminare questo post?')) {
+        performDelete();
+      }
+      return;
+    }
+
+    Alert.alert('Elimina post', 'Vuoi eliminare questo post?', [
+      { text: 'Annulla', style: 'cancel' },
+      {
+        text: 'Elimina',
+        style: 'destructive',
+        onPress: performDelete,
+      },
+    ]);
+  };
 
   return (
     <View style={[styles.card, isWeb && styles.webCard]}>
@@ -47,12 +100,22 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         >
           <Text style={[styles.author, isRTL && styles.rtlText]}>{post.author}</Text>
           <Text style={[styles.handle, isRTL && styles.rtlText]}>
-            {post.handle} • {post.time}
+            {post.displayName} • {post.time}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
+      {isEditing ? (
+        <TextInput
+          style={[styles.editInput, isRTL && styles.rtlText]}
+          value={editDraft}
+          onChangeText={(text) => setEditDraft(text.slice(0, 500))}
+          multiline
+          maxLength={500}
+        />
+      ) : (
+        <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
+      )}
 
       {post.image && <Image source={{ uri: post.image }} style={styles.image} />}
 
@@ -82,6 +145,49 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
       <TouchableOpacity activeOpacity={0.8} onPress={() => setShowComments((prev) => !prev)}>
         <Text style={styles.viewComments}>Visualizza tutti i {post.comments?.length || 0} commenti</Text>
       </TouchableOpacity>
+
+      {isOwner ? (
+        <View style={[styles.ownerActions, isRTL && styles.rowReverse]}>
+          {isEditing ? (
+            <>
+              <TouchableOpacity
+                style={[styles.ownerButton, updating && styles.ownerButtonDisabled]}
+                onPress={handleSaveEdit}
+                disabled={updating}
+              >
+                <Text style={styles.ownerButtonText}>{updating ? 'Salvataggio...' : 'Salva'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.ownerButton}
+                onPress={() => {
+                  setIsEditing(false);
+                  setEditError(null);
+                }}
+                disabled={updating}
+              >
+                <Text style={styles.ownerButtonText}>Annulla</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.ownerButton} onPress={() => setIsEditing(true)}>
+                <Text style={styles.ownerButtonText}>Modifica</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ownerButton, styles.ownerDanger, deleting && styles.ownerButtonDisabled]}
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                <Text style={[styles.ownerButtonText, styles.ownerDangerText]}>
+                  {deleting ? 'Eliminazione...' : 'Elimina'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      ) : null}
+
+      {editError ? <Text style={styles.editErrorText}>{editError.message}</Text> : null}
 
       {showLikes && (
         <View style={styles.likesList}>
@@ -178,6 +284,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: theme.spacing.sm,
   },
+  editInput: {
+    borderWidth: 1,
+    borderColor: 'rgba(12,27,51,0.1)',
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    color: theme.colors.text,
+    backgroundColor: 'rgba(12,27,51,0.02)',
+    minHeight: 70,
+    marginBottom: theme.spacing.sm,
+  },
   image: {
     width: '100%',
     height: 180,
@@ -199,6 +316,39 @@ const styles = StyleSheet.create({
   viewComments: {
     color: theme.colors.muted,
     marginBottom: theme.spacing.xs,
+  },
+  ownerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
+    marginBottom: theme.spacing.xs,
+  },
+  ownerButton: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 6,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(12,27,51,0.12)',
+    backgroundColor: theme.colors.card,
+  },
+  ownerButtonText: {
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  ownerDanger: {
+    borderColor: 'rgba(215,35,35,0.4)',
+    backgroundColor: 'rgba(215,35,35,0.08)',
+  },
+  ownerDangerText: {
+    color: theme.colors.primary,
+  },
+  ownerButtonDisabled: {
+    opacity: 0.6,
+  },
+  editErrorText: {
+    color: theme.colors.danger || '#d64545',
+    fontWeight: '600',
   },
   webCard: {
     width: '100%',

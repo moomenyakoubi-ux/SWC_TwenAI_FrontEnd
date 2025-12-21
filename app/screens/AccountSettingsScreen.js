@@ -122,12 +122,17 @@ const AccountSettingsScreen = () => {
             <Text style={[styles.actionText, isRTL && styles.rtlText]}>Verifica in due passaggi</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.logoutRow, logoutLoading && styles.logoutDisabled, isRTL && styles.rowReverse]}
+            style={[
+              styles.logoutRow,
+              isWeb && styles.logoutRowWeb,
+              logoutLoading && styles.logoutDisabled,
+              isRTL && styles.rowReverse,
+            ]}
             onPress={handleLogout}
             disabled={logoutLoading}
           >
             <Ionicons name="log-out-outline" size={20} color={theme.colors.card} />
-            <Text style={[styles.logoutText, isRTL && styles.rtlText]}>Logout</Text>
+            <Text style={[styles.logoutText, isWeb && styles.logoutTextWeb, isRTL && styles.rtlText]}>Logout</Text>
           </TouchableOpacity>
         </View>
 
@@ -228,13 +233,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.sm,
     paddingVertical: 10,
+    paddingHorizontal: theme.spacing.lg,
     borderRadius: theme.radius.md,
     backgroundColor: theme.colors.primary,
     justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  logoutRowWeb: {
+    backgroundColor: theme.colors.primary,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    boxShadow: '0 10px 24px rgba(215,35,35,0.2)',
+    cursor: 'pointer',
+    minWidth: 160,
+    maxWidth: 200,
   },
   logoutText: {
     color: theme.colors.card,
     fontWeight: '700',
+  },
+  logoutTextWeb: {
+    color: theme.colors.card,
+    fontSize: 16,
+    letterSpacing: 0.4,
   },
   logoutDisabled: {
     opacity: 0.7,

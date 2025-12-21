@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,10 +18,13 @@ import * as ImagePicker from 'expo-image-picker';
 import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
+import { supabase } from '../lib/supabase';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import useSession from '../auth/useSession';
 import useProfile from '../profile/useProfile';
+import { usePosts } from '../context/PostsContext';
+import PostCard from '../components/PostCard';
 
 const isUuid = (value) =>
   typeof value === 'string' &&
@@ -34,13 +37,21 @@ const ProfileScreen = () => {
   const navigation = useNavigation();
   const sidebarTitle = strings.home?.greeting || menuStrings.userProfile;
   const { user } = useSession();
-  const { profile, loading, error, updateProfile } = useProfile();
+  const { profile, loading, error, updateProfile, refresh } = useProfile();
+  const { posts, createPost } = usePosts();
   const [fullNameInput, setFullNameInput] = useState('');
   const [avatarInput, setAvatarInput] = useState('');
   const [bioInput, setBioInput] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState(null);
+  const [avatarError, setAvatarError] = useState(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [deletingAvatar, setDeletingAvatar] = useState(false);
+  const [postContent, setPostContent] = useState('');
+  const [postImageUri, setPostImageUri] = useState('');
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState(null);
   const hasSyncedLanguage = useRef(false);
 
   useEffect(() => {
@@ -134,7 +145,131 @@ const ProfileScreen = () => {
     });
 
     if (!result.canceled && result.assets?.length) {
-      setAvatarInput(result.assets[0].uri);
+      const selectedUri = result.assets[0].uri;
+      await uploadAvatar(selectedUri);
+    }
+  };
+
+  const handlePickPostImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permesso richiesto', "Concedi l'accesso alle foto per aggiungere un media.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (!result.canceled && result.assets?.length) {
+      setPostImageUri(result.assets[0].uri);
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (posting) return;
+    setPostError(null);
+    setPosting(true);
+    const { error: createError } = await createPost({
+      content: postContent,
+      mediaUri: postImageUri || null,
+    });
+    if (createError) {
+      setPostError(createError);
+    } else {
+      setPostContent('');
+      setPostImageUri('');
+    }
+    setPosting(false);
+  };
+
+  const userPosts = useMemo(() => posts.filter((post) => post.authorId === user?.id), [posts, user?.id]);
+
+  const uploadAvatar = async (uri) => {
+    if (!user) {
+      setAvatarError(new Error('Utente non autenticato.'));
+      return;
+    }
+    if (!uri) return;
+    setAvatarError(null);
+    setUploadingAvatar(true);
+    try {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      const path = `${user.id}/avatar.jpg`;
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, blob, {
+        upsert: true,
+        contentType: blob.type || 'image/jpeg',
+      });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      const publicUrl = data?.publicUrl;
+      if (!publicUrl) {
+        throw new Error('Impossibile ottenere URL pubblico.');
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id)
+        .select('*')
+        .single();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setAvatarInput(publicUrl);
+      if (updated) {
+        await refresh();
+      }
+    } catch (uploadError) {
+      setAvatarError(uploadError);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const deleteAvatar = async () => {
+    if (!user) {
+      setAvatarError(new Error('Utente non autenticato.'));
+      return;
+    }
+    setAvatarError(null);
+    setDeletingAvatar(true);
+    try {
+      const path = `${user.id}/avatar.jpg`;
+      const { error: removeError } = await supabase.storage.from('avatars').remove([path]);
+      if (removeError) {
+        throw removeError;
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('id', user.id)
+        .select('*')
+        .single();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setAvatarInput('');
+      if (updated) {
+        await refresh();
+      }
+    } catch (removeError) {
+      setAvatarError(removeError);
+    } finally {
+      setDeletingAvatar(false);
     }
   };
 
@@ -189,9 +324,29 @@ const ProfileScreen = () => {
               <View style={styles.fieldRow}>
                 <Text style={[styles.label, isRTL && styles.rtlText]}>Immagine profilo</Text>
                 <View style={[styles.uploadRow, isRTL && styles.rowReverse]}>
-                  <TouchableOpacity style={styles.uploadButton} onPress={handlePickImage}>
-                    <Ionicons name="cloud-upload" size={18} color={theme.colors.card} />
-                    <Text style={styles.uploadButtonText}>Carica da dispositivo</Text>
+                  <TouchableOpacity
+                    style={[styles.uploadButton, (uploadingAvatar || deletingAvatar) && styles.uploadButtonDisabled]}
+                    onPress={handlePickImage}
+                    disabled={uploadingAvatar || deletingAvatar}
+                  >
+                    {uploadingAvatar ? (
+                      <ActivityIndicator size="small" color={theme.colors.card} />
+                    ) : (
+                      <Ionicons name="cloud-upload" size={18} color={theme.colors.card} />
+                    )}
+                    <Text style={styles.uploadButtonText}>Cambia foto</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.removeButton, (uploadingAvatar || deletingAvatar) && styles.uploadButtonDisabled]}
+                    onPress={deleteAvatar}
+                    disabled={uploadingAvatar || deletingAvatar}
+                  >
+                    {deletingAvatar ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                    ) : (
+                      <Ionicons name="trash" size={18} color={theme.colors.primary} />
+                    )}
+                    <Text style={styles.removeButtonText}>Rimuovi foto</Text>
                   </TouchableOpacity>
                   {avatarInput ? (
                     <Image source={{ uri: avatarInput }} style={styles.preview} />
@@ -201,6 +356,9 @@ const ProfileScreen = () => {
                     </View>
                   )}
                 </View>
+                {avatarError ? (
+                  <Text style={[styles.errorText, isRTL && styles.rtlText]}>{avatarError.message}</Text>
+                ) : null}
               </View>
               <View style={styles.fieldRow}>
                 <Text style={[styles.label, isRTL && styles.rtlText]}>Nome completo</Text>
@@ -260,6 +418,69 @@ const ProfileScreen = () => {
               </TouchableOpacity>
             </View>
           ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Crea un post</Text>
+          <View style={styles.fieldRow}>
+            <Text style={[styles.label, isRTL && styles.rtlText]}>Testo</Text>
+            <TextInput
+              style={[styles.input, styles.multiline, isRTL && styles.rtlText]}
+              value={postContent}
+              onChangeText={(text) => setPostContent(text.slice(0, 500))}
+              multiline
+              placeholder="Condividi qualcosa con la community..."
+              maxLength={500}
+            />
+            <Text style={[styles.charCount, isRTL && styles.rtlText]}>
+              {postContent.length}/500
+            </Text>
+          </View>
+          <View style={[styles.uploadRow, isRTL && styles.rowReverse]}>
+            <TouchableOpacity
+              style={[styles.uploadButton, posting && styles.uploadButtonDisabled]}
+              onPress={handlePickPostImage}
+              disabled={posting}
+            >
+              <Ionicons name="image" size={18} color={theme.colors.card} />
+              <Text style={styles.uploadButtonText}>Aggiungi media</Text>
+            </TouchableOpacity>
+            {postImageUri ? (
+              <Image source={{ uri: postImageUri }} style={styles.preview} />
+            ) : (
+              <View style={[styles.preview, styles.previewFallback]}>
+                <Ionicons name="image" size={18} color={theme.colors.muted} />
+              </View>
+            )}
+          </View>
+          {postError ? (
+            <Text style={[styles.errorText, isRTL && styles.rtlText]}>{postError.message}</Text>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.saveButton, (posting || !postContent.trim()) && styles.saveButtonDisabled]}
+            onPress={handleCreatePost}
+            disabled={posting || !postContent.trim()}
+          >
+            {posting ? (
+              <ActivityIndicator size="small" color={theme.colors.card} />
+            ) : (
+              <Ionicons name="send" size={18} color={theme.colors.card} />
+            )}
+            <Text style={styles.saveButtonText}>{posting ? 'Pubblicazione...' : 'Pubblica'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>I tuoi post</Text>
+          {userPosts.length === 0 ? (
+            <Text style={[styles.emptyText, isRTL && styles.rtlText]}>Non hai ancora pubblicato post.</Text>
+          ) : (
+            userPosts.map((post) => (
+              <View key={post.id} style={styles.postBlock}>
+                <PostCard post={post} isRTL={isRTL} />
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
       <WebSidebar
@@ -441,8 +662,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: theme.radius.md,
   },
+  uploadButtonDisabled: {
+    opacity: 0.6,
+  },
   uploadButtonText: {
     color: theme.colors.card,
+    fontWeight: '700',
+  },
+  removeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(215,35,35,0.4)',
+    backgroundColor: 'rgba(215,35,35,0.08)',
+  },
+  removeButtonText: {
+    color: theme.colors.primary,
     fontWeight: '700',
   },
   preview: {
@@ -469,6 +708,12 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.danger || '#d64545',
     fontWeight: '600',
+  },
+  emptyText: {
+    color: theme.colors.muted,
+  },
+  postBlock: {
+    gap: theme.spacing.sm,
   },
   loadingRow: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/Card';
 import SectionHeader from '../components/SectionHeader';
 import PostCard from '../components/PostCard';
@@ -32,7 +33,7 @@ const HomeScreen = ({ navigation }) => {
   const { strings, isRTL } = useLanguage();
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
-  const { posts } = usePosts();
+  const { posts, refreshFeed, feedError } = usePosts();
   const [isMenuOpen, setIsMenuOpen] = useState(isWeb);
   const sideMenuWidth = isWeb ? WEB_SIDE_MENU_WIDTH : 280;
   const slideAnim = useRef(new Animated.Value(isWeb ? 1 : 0)).current;
@@ -54,6 +55,14 @@ const HomeScreen = ({ navigation }) => {
       useNativeDriver: true,
     }).start();
   }, [isMenuOpen, slideAnim]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (refreshFeed) {
+        refreshFeed();
+      }
+    }, [refreshFeed]),
+  );
 
   return (
     <ImageBackground
@@ -117,10 +126,11 @@ const HomeScreen = ({ navigation }) => {
           />
 
           <SectionHeader title={homeStrings.communityPosts} isRTL={isRTL} />
+          {feedError ? (
+            <Text style={[styles.feedError, isRTL && styles.rtlText]}>{feedError.message}</Text>
+          ) : null}
           {posts.map((post) => {
-            const profile = profiles.find(
-              (item) => item.handle === post.handle || item.username === post.handle || item.name === post.author,
-            );
+            const profile = profiles.find((item) => item.name === post.author);
 
             return (
               <PostCard
@@ -244,6 +254,11 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     marginBottom: theme.spacing.lg,
     lineHeight: 20,
+  },
+  feedError: {
+    color: theme.colors.danger || '#d64545',
+    fontWeight: '600',
+    marginBottom: theme.spacing.sm,
   },
   rtlText: {
     textAlign: 'right',
