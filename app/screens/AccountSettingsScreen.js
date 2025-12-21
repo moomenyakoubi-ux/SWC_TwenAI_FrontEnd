@@ -10,11 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { signOut } from '../auth/authApi';
+import { supabase } from '../lib/supabase';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import useSession from '../auth/useSession';
@@ -52,11 +54,26 @@ const AccountSettingsScreen = () => {
   const handleLogout = async () => {
     if (logoutLoading) return;
     setLogoutLoading(true);
-    const { error } = await signOut();
-    if (error) {
-      Alert.alert('Errore', error.message);
+    try {
+      const options = isWeb ? { scope: 'local' } : undefined;
+      const { error } = await signOut(options);
+      if (error) {
+        if (!isWeb) {
+          Alert.alert('Errore', error.message);
+        }
+      }
+      if (isWeb && typeof window !== 'undefined') {
+        const storageKey = supabase?.auth?.storageKey;
+        if (storageKey) {
+          await AsyncStorage.removeItem(storageKey);
+        }
+        window.location.reload();
+      }
+    } catch (err) {
+      Alert.alert('Errore', err?.message || 'Logout fallito.');
+    } finally {
+      setLogoutLoading(false);
     }
-    setLogoutLoading(false);
   };
 
   return (

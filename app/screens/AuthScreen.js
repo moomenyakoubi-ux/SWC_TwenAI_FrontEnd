@@ -23,6 +23,7 @@ const AuthScreen = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
 
   const resetForm = () => {
     setEmail('');
@@ -31,6 +32,7 @@ const AuthScreen = () => {
     setShowPassword(false);
     setShowConfirmPassword(false);
     setErrorMessage('');
+    setStatusMessage('');
   };
 
   const enterMode = (nextMode) => {
@@ -57,12 +59,24 @@ const AuthScreen = () => {
 
     setLoading(true);
     setErrorMessage('');
+    setStatusMessage('');
 
-    const action = mode === 'signup' ? signUp : signIn;
-    const { error } = await action(email.trim(), password);
+    let response;
+    if (mode === 'signup') {
+      const options =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? { emailRedirectTo: window.location.origin }
+          : undefined;
+      response = await signUp(email.trim(), password, options);
+    } else {
+      response = await signIn(email.trim(), password);
+    }
+    const { error } = response;
 
     if (error) {
       setErrorMessage(error.message);
+    } else if (mode === 'signup') {
+      setStatusMessage("Controlla la tua email per confermare l'account.");
     }
 
     setLoading(false);
@@ -173,6 +187,7 @@ const AuthScreen = () => {
           ) : null}
 
           {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+          {statusMessage ? <Text style={styles.status}>{statusMessage}</Text> : null}
 
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
@@ -292,6 +307,10 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#B91C1C',
+    fontWeight: '600',
+  },
+  status: {
+    color: theme.colors.secondary,
     fontWeight: '600',
   },
   primaryButton: {
