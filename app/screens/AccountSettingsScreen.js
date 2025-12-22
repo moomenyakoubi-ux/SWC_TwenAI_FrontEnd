@@ -19,6 +19,7 @@ import { signOut } from '../auth/authApi';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import useSession from '../auth/useSession';
 
 const SettingRow = ({ icon, label, description, value, onToggle, isRTL }) => (
@@ -182,7 +183,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   webContent: {
-    paddingHorizontal: theme.spacing.xl,
+    paddingLeft: theme.spacing.xl,
+    paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
     width: '100%',
     maxWidth: 1100,
     alignSelf: 'center',

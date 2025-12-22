@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import useSession from '../auth/useSession';
 import theme from '../styles/theme';
@@ -45,18 +45,55 @@ export const PostsProvider = ({ children }) => {
   const { user, loading } = useSession();
   const [posts, setPosts] = useState([]);
   const [feedError, setFeedError] = useState(null);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const avatarCacheRef = useRef(new Map());
 
-  const fetchPosts = useCallback(async () => {
+  const resolveAvatarUrl = useCallback((value) => {
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value)) return value;
+    const { data } = supabase.storage.from('avatars').getPublicUrl(value);
+    return data?.publicUrl || null;
+  }, []);
+
+  const fetchPosts = useCallback(async ({ reset = false } = {}) => {
     if (loading) {
       return;
     }
     if (!user) {
       setPosts([]);
+      setPage(0);
+      setHasMore(true);
       return;
     }
 
-    console.log('FEED FETCH start', { userId: user?.id });
+    if (reset) {
+      setPage(0);
+      setHasMore(true);
+    }
+
+    const currentPage = reset ? 0 : page;
+    const from = currentPage * 20;
+    const to = from + 19;
+
+    console.log('FEED FETCH start', { userId: user?.id, page: currentPage });
     setFeedError(null);
+    setLoadingMore(currentPage > 0);
+
+    const { data: followRows, error: followsError } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', user.id);
+
+    if (followsError) {
+      setFeedError(followsError);
+      setLoadingMore(false);
+      return;
+    }
+
+    const followingIds = (followRows || []).map((row) => row.following_id).filter(Boolean);
+    const allowedAuthorIds = [user.id, ...followingIds];
 
     const FEED_SELECT = `
       id,
@@ -99,30 +136,70 @@ export const PostsProvider = ({ children }) => {
     const { data, error } = await supabase
       .from('posts')
       .select(FEED_SELECT)
+      .in('author_id', allowedAuthorIds)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .range(from, to);
 
     console.log('FEED FETCH result', { len: data?.length, error });
 
     if (error) {
       console.error('fetchPosts error:', error);
       setFeedError(error);
+      setLoadingMore(false);
       return;
     }
 
-    const mapped = (data || []).map((post) => {
+    const postRows = data || [];
+    const postIds = postRows.map((post) => post.id).filter(Boolean);
+    const authorIds = Array.from(new Set(postRows.map((post) => post.author_id).filter(Boolean)));
+    const missingAuthorIds = authorIds.filter((id) => !avatarCacheRef.current.has(id));
+    if (missingAuthorIds.length) {
+      const { data: profileRows } = await supabase
+        .from('profiles')
+        .select('id, avatar_url')
+        .in('id', missingAuthorIds);
+      (profileRows || []).forEach((row) => {
+        avatarCacheRef.current.set(row.id, resolveAvatarUrl(row.avatar_url));
+      });
+      missingAuthorIds.forEach((id) => {
+        if (!avatarCacheRef.current.has(id)) {
+          avatarCacheRef.current.set(id, null);
+        }
+      });
+    }
+    let mediaMap = {};
+    if (postIds.length) {
+      const { data: mediaRows } = await supabase
+        .from('post_media')
+        .select('post_id, media_type, bucket, path, width, height, duration_seconds')
+        .in('post_id', postIds);
+      mediaMap = (mediaRows || []).reduce((acc, row) => {
+        if (!acc[row.post_id]) acc[row.post_id] = [];
+        const bucket = row.bucket || 'post_media';
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(row.path || '');
+        acc[row.post_id].push({
+          mediaType: row.media_type,
+          bucket,
+          path: row.path,
+          width: row.width,
+          height: row.height,
+          durationSeconds: row.duration_seconds,
+          publicUrl: urlData?.publicUrl || null,
+        });
+        return acc;
+      }, {});
+    }
+
+    const mapped = postRows.map((post) => {
       const authorProfile = post.profiles || {};
       const authorName = getDisplayName(authorProfile);
+      const authorAvatarUrl = avatarCacheRef.current.get(post.author_id) || null;
       const avatarColor = getAvatarColor(post.author_id);
 
-      const media =
-        (post.post_media || []).find((item) => item.media_type?.startsWith('image')) || post.post_media?.[0];
-      let image;
-      if (media?.path) {
-        const bucket = media.bucket || 'post_media';
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(media.path);
-        image = urlData?.publicUrl;
-      }
+      const mediaItems = mediaMap[post.id] || [];
+      const fallbackImage = mediaItems.find((item) => item.mediaType?.startsWith('image'));
+      const firstMedia = mediaItems[0];
+      const image = fallbackImage?.publicUrl || null;
 
       const likes = (post.post_likes || []).map((like) => {
         const likeProfile = like.profiles || {};
@@ -157,18 +234,22 @@ export const PostsProvider = ({ children }) => {
         author: authorName,
         displayName: getDisplayName(authorProfile),
         avatarColor,
+        authorAvatarUrl,
         time: formatTime(post.created_at),
         content: post.content,
         image,
-        mediaPath: media?.path || null,
-        mediaBucket: media?.bucket || null,
+        mediaPath: firstMedia?.path || null,
+        mediaBucket: firstMedia?.bucket || null,
+        mediaItems,
         likes,
         comments,
       };
     });
 
-    setPosts(mapped);
-  }, [loading, user]);
+    setPosts((prev) => (currentPage === 0 ? mapped : [...prev, ...mapped]));
+    setHasMore((data || []).length === 20);
+    setLoadingMore(false);
+  }, [loading, page, resolveAvatarUrl, user]);
 
   useEffect(() => {
     if (loading) return;
@@ -176,8 +257,15 @@ export const PostsProvider = ({ children }) => {
       setPosts([]);
       return;
     }
-    fetchPosts();
+    fetchPosts({ reset: true });
   }, [fetchPosts, loading, user?.id]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+    if (page === 0) return;
+    fetchPosts();
+  }, [fetchPosts, loading, page, user?.id]);
 
   const addPost = (post) => {
     if (!post || !post.id) return;
@@ -240,12 +328,14 @@ export const PostsProvider = ({ children }) => {
     }
 
     const authorName = 'Tu';
+    const authorAvatarUrl = avatarCacheRef.current.get(user.id) || null;
     const postPayload = {
       id: inserted.id,
       authorId: user.id,
       author: authorName,
       displayName: authorName,
       avatarColor: getAvatarColor(user.id),
+      authorAvatarUrl,
       time: formatTime(inserted.created_at),
       content: inserted.content,
       image,
@@ -422,16 +512,22 @@ export const PostsProvider = ({ children }) => {
     () => ({
       posts,
       addPost,
-      refreshFeed: fetchPosts,
+      refreshFeed: () => fetchPosts({ reset: true }),
+      loadMore: () => {
+        if (loadingMore || !hasMore) return;
+        setPage((prev) => prev + 1);
+      },
       createPost,
       updatePost,
       deletePost,
       toggleLike,
       addComment,
       feedError,
+      loadingMore,
+      hasMore,
       selfUser: { id: user?.id || 'self-user', name: 'Tu', initials: 'TU' },
     }),
-    [posts, user?.id, feedError],
+    [posts, user?.id, feedError, fetchPosts, loadingMore, hasMore],
   );
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>;

@@ -16,6 +16,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         .toUpperCase(),
     [post.author],
   );
+  const authorAvatarUrl = post.authorAvatarUrl || null;
 
   const { toggleLike, addComment, selfUser, updatePost, deletePost } = usePosts();
   const isOwner = post.authorId && post.authorId === selfUser.id;
@@ -86,11 +87,17 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     ]);
   };
 
+  const mediaItems = useMemo(() => post.mediaItems || [], [post.mediaItems]);
+
   return (
     <View style={[styles.card, isWeb && styles.webCard]}>
       <View style={[styles.header, isRTL && styles.rowReverse]}>
-        <View style={[styles.avatar, { backgroundColor: post.avatarColor }]}>
-          <Text style={styles.avatarText}>{initials}</Text>
+        <View style={[styles.avatar, { backgroundColor: authorAvatarUrl ? 'transparent' : post.avatarColor }]}>
+          {authorAvatarUrl ? (
+            <Image source={{ uri: authorAvatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>{initials}</Text>
+          )}
         </View>
         <TouchableOpacity
           style={styles.meta}
@@ -117,7 +124,38 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
       )}
 
-      {post.image && <Image source={{ uri: post.image }} style={styles.image} />}
+      {post.image && mediaItems.length === 0 ? (
+        <Image source={{ uri: post.image }} style={styles.image} />
+      ) : null}
+
+      {mediaItems.map((media, index) => {
+        if (!media?.publicUrl) return null;
+        if (media.mediaType === 'image') {
+          const aspectRatio =
+            media.width && media.height ? media.width / media.height : undefined;
+          return (
+            <Image
+              key={`${media.publicUrl}-${index}`}
+              source={{ uri: media.publicUrl }}
+              style={[
+                styles.mediaImage,
+                aspectRatio ? { aspectRatio, height: undefined } : null,
+              ]}
+            />
+          );
+        }
+
+        if (media.mediaType === 'video') {
+          return (
+            <View key={`${media.publicUrl}-${index}`} style={styles.videoPlaceholder}>
+              <Ionicons name="videocam" size={20} color={theme.colors.muted} />
+              <Text style={styles.videoPlaceholderText}>Video non supportato ancora</Text>
+            </View>
+          );
+        }
+
+        return null;
+      })}
 
       <View style={[styles.actions, isRTL && styles.rowReverse]}>
         <TouchableOpacity
@@ -262,6 +300,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
   avatarText: {
     color: theme.colors.card,
     fontWeight: '800',
@@ -300,6 +343,29 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: theme.radius.md,
     marginBottom: theme.spacing.sm,
+  },
+  mediaImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.sm,
+    backgroundColor: 'rgba(12,27,51,0.06)',
+  },
+  videoPlaceholder: {
+    marginBottom: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(12,27,51,0.12)',
+    backgroundColor: 'rgba(12,27,51,0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  videoPlaceholderText: {
+    color: theme.colors.muted,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',

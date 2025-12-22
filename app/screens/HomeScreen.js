@@ -19,7 +19,6 @@ import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
-import { useContacts } from '../context/ContactsContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { usePosts } from '../context/PostsContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
@@ -33,11 +32,11 @@ const HomeScreen = ({ navigation }) => {
   const { strings, isRTL } = useLanguage();
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
-  const { posts, refreshFeed, feedError } = usePosts();
-  const [isMenuOpen, setIsMenuOpen] = useState(isWeb);
+  const { posts, refreshFeed, feedError, loadMore, hasMore, loadingMore } = usePosts();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const sideMenuWidth = isWeb ? WEB_SIDE_MENU_WIDTH : 280;
   const slideAnim = useRef(new Animated.Value(isWeb ? 1 : 0)).current;
-  const { profiles } = useContacts();
+  const lastLoadRef = useRef(0);
 
   const selection = useMemo(
     () => ({
@@ -63,6 +62,20 @@ const HomeScreen = ({ navigation }) => {
       }
     }, [refreshFeed]),
   );
+
+  const handleScroll = (event) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 180;
+    const isNearBottom =
+      layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    if (!isNearBottom || loadingMore || !hasMore) return;
+    const now = Date.now();
+    if (now - lastLoadRef.current < 600) return;
+    lastLoadRef.current = now;
+    if (loadMore) {
+      loadMore();
+    }
+  };
 
   return (
     <ImageBackground
@@ -96,6 +109,8 @@ const HomeScreen = ({ navigation }) => {
             },
           ]}
           showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
           
           <SectionHeader title={homeStrings.featuredNews} isRTL={isRTL} />
@@ -129,72 +144,67 @@ const HomeScreen = ({ navigation }) => {
           {feedError ? (
             <Text style={[styles.feedError, isRTL && styles.rtlText]}>{feedError.message}</Text>
           ) : null}
-          {posts.map((post) => {
-            const profile = profiles.find((item) => item.name === post.author);
-
-            return (
-              <PostCard
-                key={post.id}
-                post={post}
-                isRTL={isRTL}
-                onPressAuthor={
-                  profile ? () => navigation.navigate('PublicProfile', { profileId: profile.id }) : undefined
-                }
-              />
-            );
-          })}
+          {posts.map((post) => (
+            <PostCard
+              key={post.id}
+              post={post}
+              isRTL={isRTL}
+              onPressAuthor={
+                post.authorId ? () => navigation.navigate('PublicProfile', { profileId: post.authorId }) : undefined
+              }
+            />
+          ))}
 
         </ScrollView>
 
         {isMenuOpen && !isWeb && (
           <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setIsMenuOpen(false)} />
         )}
-        <Animated.View
-          style={[
-            styles.sideMenu,
-            { width: sideMenuWidth },
-            isWeb && styles.sideMenuWeb,
-            {
-              transform: [
-                {
-                  translateX: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [sideMenuWidth, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
-          <View style={styles.menuItems}>
-            {[
-              { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
-              { label: menuStrings.accountSettings, icon: 'settings', route: 'AccountSettings' },
-              { label: menuStrings.language, icon: 'globe', route: 'Lingua' },
-              { label: menuStrings.privacy, icon: 'shield-checkmark', route: 'PrivacyPolicy' },
-              { label: menuStrings.terms, icon: 'document-text', route: 'Termini' },
-              { label: menuStrings.copyright, icon: 'ribbon', route: 'Copyright' },
-              { label: menuStrings.cookies, icon: 'ice-cream', route: 'CookiePolicy' },
-              { label: menuStrings.aiUsage, icon: 'sparkles', route: 'AiUsage' },
-              { label: menuStrings.support, icon: 'call', route: 'Support' },
-            ].map((item) => (
-            <TouchableOpacity
-              key={item.route}
-                style={[styles.menuItem, isRTL && styles.menuItemRtl]}
-                onPress={() => {
-                  if (!isWeb) {
+        {!isWeb ? (
+          <Animated.View
+            style={[
+              styles.sideMenu,
+              { width: sideMenuWidth },
+              {
+                transform: [
+                  {
+                    translateX: slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [sideMenuWidth, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
+            <View style={styles.menuItems}>
+              {[
+                { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
+                { label: menuStrings.accountSettings, icon: 'settings', route: 'AccountSettings' },
+                { label: menuStrings.language, icon: 'globe', route: 'Lingua' },
+                { label: menuStrings.privacy, icon: 'shield-checkmark', route: 'PrivacyPolicy' },
+                { label: menuStrings.terms, icon: 'document-text', route: 'Termini' },
+                { label: menuStrings.copyright, icon: 'ribbon', route: 'Copyright' },
+                { label: menuStrings.cookies, icon: 'ice-cream', route: 'CookiePolicy' },
+                { label: menuStrings.aiUsage, icon: 'sparkles', route: 'AiUsage' },
+                { label: menuStrings.support, icon: 'call', route: 'Support' },
+              ].map((item) => (
+              <TouchableOpacity
+                key={item.route}
+                  style={[styles.menuItem, isRTL && styles.menuItemRtl]}
+                  onPress={() => {
                     setIsMenuOpen(false);
-                  }
-                  navigation.navigate(item.route);
-                }}
-              >
-                <Ionicons name={item.icon} size={22} color={theme.colors.secondary} />
-                <Text style={[styles.menuLabel, isRTL && styles.rtlText]}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
+                    navigation.navigate(item.route);
+                  }}
+                >
+                  <Ionicons name={item.icon} size={22} color={theme.colors.secondary} />
+                  <Text style={[styles.menuLabel, isRTL && styles.rtlText]}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
+        ) : null}
       </View>
     </ImageBackground>
   );

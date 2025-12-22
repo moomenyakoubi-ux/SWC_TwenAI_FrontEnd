@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import useSession from '../auth/useSession';
 import useProfile from '../profile/useProfile';
 
@@ -82,7 +83,8 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.lg,
   },
   webContainer: {
-    paddingHorizontal: theme.spacing.xl,
+    paddingLeft: theme.spacing.xl,
+    paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
     width: '100%',
     maxWidth: 900,
     alignSelf: 'center',

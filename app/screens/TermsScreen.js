@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 
 const TermsScreen = () => {
   const { strings, isRTL } = useLanguage();
@@ -41,7 +42,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   webContent: {
-    paddingHorizontal: theme.spacing.xl,
+    paddingLeft: theme.spacing.xl,
+    paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
     width: '100%',
     maxWidth: 960,
     alignSelf: 'center',

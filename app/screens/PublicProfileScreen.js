@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,148 +12,869 @@ import {
 } from 'react-native';
 import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
-import { useContacts } from '../context/ContactsContext';
+import { useFocusEffect } from '@react-navigation/native';
 import theme from '../styles/theme';
+import { supabase } from '../lib/supabase';
+import useSession from '../auth/useSession';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import PostCard from '../components/PostCard';
+
+const isUuid = (value) =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const getInitials = (value) =>
+  String(value || '')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
 const PublicProfileScreen = ({ route, navigation }) => {
   const { strings, isRTL } = useLanguage();
+  const isWeb = Platform.OS === 'web';
   const profileId = route.params?.profileId;
-  const { profiles, setContactStatus } = useContacts();
+  const isValidProfileId = isUuid(profileId);
+  const { user } = useSession();
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isFollowingUser, setIsFollowingUser] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [activeList, setActiveList] = useState(null);
+  const [privacyHint, setPrivacyHint] = useState('');
+  const [followingCount, setFollowingCount] = useState(null);
+  const [followersCount, setFollowersCount] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsPage, setPostsPage] = useState(0);
+  const [postsHasMore, setPostsHasMore] = useState(true);
+  const [followers, setFollowers] = useState([]);
+  const [followersLoading, setFollowersLoading] = useState(false);
+  const [followersPage, setFollowersPage] = useState(0);
+  const [followersHasMore, setFollowersHasMore] = useState(true);
+  const [following, setFollowing] = useState([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  const [followingPage, setFollowingPage] = useState(0);
+  const [followingHasMore, setFollowingHasMore] = useState(true);
+  const [followStatus, setFollowStatus] = useState({});
+  const [rowLoading, setRowLoading] = useState({});
 
-  const profile = useMemo(() => {
-    const fallback =
-      profiles[0] ||
-      ({
-        id: 'fallback',
-        name: 'Profilo dimostrativo',
-        username: '@profilo',
-        handle: '@profilo',
-        avatarColor: theme.colors.primary,
-        bio: '',
-        city: '',
-        interests: '',
-        posts: [],
-        isContact: false,
-      });
+  const isSelf = user?.id === profileId;
 
-    return profiles.find((item) => item.id === profileId) ?? fallback;
-  }, [profileId, profiles]);
+  const formatTime = useCallback((value) => {
+    const created = value ? new Date(value).getTime() : Date.now();
+    const diff = Math.max(0, Date.now() - created);
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `${Math.max(1, minutes)}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `${days}g`;
+  }, []);
+
+  const getAvatarColor = useCallback((seed) => {
+    if (!seed) return theme.colors.secondary;
+    const palette = [theme.colors.primary, theme.colors.secondary, theme.colors.accent, '#3B82F6', '#10B981'];
+    const hash = String(seed)
+      .split('')
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return palette[hash % palette.length];
+  }, []);
+
+  const resolveAvatarUrl = useCallback((value) => {
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value)) return value;
+    const { data } = supabase.storage.from('avatars').getPublicUrl(value);
+    return data?.publicUrl || null;
+  }, []);
+
+  const resetLists = useCallback(() => {
+    setPosts([]);
+    setPostsPage(0);
+    setPostsHasMore(true);
+    setFollowers([]);
+    setFollowersPage(0);
+    setFollowersHasMore(true);
+    setFollowing([]);
+    setFollowingPage(0);
+    setFollowingHasMore(true);
+    setFollowStatus({});
+    setRowLoading({});
+  }, []);
+
+  const handleError = useCallback((err) => {
+    if (err) {
+      setError(err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!isValidProfileId) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, bio')
+          .eq('id', profileId)
+          .maybeSingle();
+
+        if (fetchError) {
+          handleError(fetchError);
+          setLoading(false);
+          return;
+        }
+
+        setProfile(data || null);
+      } catch (err) {
+        handleError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [handleError, isValidProfileId, profileId]);
+
+  useEffect(() => {
+    if (!isValidProfileId) return;
+    resetLists();
+    setActiveList(null);
+    setPrivacyHint('');
+    setFollowingCount(null);
+    setFollowersCount(null);
+  }, [isValidProfileId, profileId, resetLists]);
+
+  const isFollowing = useCallback(async (targetId) => {
+    if (!user || !targetId || user.id === targetId) {
+      return false;
+    }
+    try {
+      const { data, error: followError } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id)
+        .eq('following_id', targetId)
+        .maybeSingle();
+      if (followError) {
+        handleError(followError);
+        return false;
+      }
+      return Boolean(data);
+    } catch (err) {
+      handleError(err);
+      return false;
+    }
+  }, [handleError, user]);
+
+  useEffect(() => {
+    const fetchFollowState = async () => {
+      if (!user || !isValidProfileId) return;
+      if (user.id === profileId) {
+        setIsFollowingUser(true);
+        setActiveList(null);
+        return;
+      }
+      const following = await isFollowing(profileId);
+      setIsFollowingUser(following);
+      setActiveList(null);
+      if (!following) {
+        resetLists();
+      }
+    };
+
+    fetchFollowState();
+  }, [isFollowing, isValidProfileId, profileId, resetLists, user]);
 
   const initials = useMemo(
     () =>
-      profile.name
+      (profile?.full_name || 'Utente')
         .split(' ')
         .map((part) => part[0])
         .join('')
         .slice(0, 2)
         .toUpperCase(),
-    [profile.name],
+    [profile?.full_name],
   );
 
   const profileStrings = strings.profiles ?? {};
-  const canViewProfile = profile?.isContact === true;
+  const canViewPrivate = isSelf || isFollowingUser;
+
+  const fetchCounts = useCallback(async () => {
+    if (!isValidProfileId) return;
+    if (!canViewPrivate) {
+      setFollowingCount(null);
+      setFollowersCount(null);
+      return;
+    }
+    try {
+      const [{ count: following }, { count: followers }] = await Promise.all([
+        supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('follower_id', profileId),
+        supabase
+          .from('follows')
+          .select('*', { count: 'exact', head: true })
+          .eq('following_id', profileId),
+      ]);
+      setFollowingCount(typeof following === 'number' ? following : 0);
+      setFollowersCount(typeof followers === 'number' ? followers : 0);
+    } catch (err) {
+      handleError(err);
+    }
+  }, [canViewPrivate, handleError, isValidProfileId, profileId]);
+
+  useEffect(() => {
+    if (!isValidProfileId) return;
+    fetchCounts();
+  }, [fetchCounts, isFollowingUser, isValidProfileId, profileId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user || !isValidProfileId) return;
+      if (user.id === profileId) {
+        setIsFollowingUser(true);
+        fetchCounts();
+        return;
+      }
+      isFollowing(profileId).then((following) => {
+        setIsFollowingUser(following);
+        if (!following) {
+          setActiveList(null);
+          resetLists();
+        }
+        fetchCounts();
+      });
+    }, [fetchCounts, isFollowing, isValidProfileId, profileId, resetLists, user]),
+  );
+
+  const handleToggleFollow = async () => {
+    if (!user || !isValidProfileId || isSelf || toggling) return;
+    const next = !isFollowingUser;
+    setIsFollowingUser(next);
+    if (!next) {
+      resetLists();
+    }
+    setToggling(true);
+    if (next) {
+      const { error: insertError } = await supabase
+        .from('follows')
+        .insert({ follower_id: user.id, following_id: profileId });
+      if (insertError) {
+        if (insertError.code !== '23505') {
+          setIsFollowingUser(false);
+          setActiveList(null);
+          resetLists();
+        }
+      }
+    } else {
+      const { error: deleteError } = await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', user.id)
+        .eq('following_id', profileId);
+      if (deleteError) {
+        setIsFollowingUser(true);
+      }
+    }
+    setToggling(false);
+    fetchCounts();
+  };
+
+  const fetchPosts = useCallback(async (pageNumber) => {
+    if (!profileId) return;
+    if (!postsHasMore && pageNumber > 0) return;
+    setPostsLoading(true);
+    const from = pageNumber * 20;
+    const to = from + 19;
+    try {
+      const { data, error: postsError } = await supabase
+        .from('posts')
+        .select('id, content, created_at, author_id, full_name')
+        .eq('author_id', profileId)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (postsError) {
+        handleError(postsError);
+        setPostsLoading(false);
+        return;
+      }
+    const postRows = data || [];
+    const postIds = postRows.map((row) => row.id).filter(Boolean);
+    const authorIds = Array.from(new Set(postRows.map((row) => row.author_id).filter(Boolean)));
+    let authorMap = {};
+    if (authorIds.length) {
+      const { data: authorRows, error: authorError } = await supabase
+        .from('profiles')
+        .select('id, avatar_url')
+        .in('id', authorIds);
+      if (authorError) {
+        handleError(authorError);
+      }
+      authorMap = (authorRows || []).reduce((acc, row) => {
+        acc[row.id] = resolveAvatarUrl(row.avatar_url);
+        return acc;
+      }, {});
+    }
+      let mediaMap = {};
+      if (postIds.length) {
+        const { data: mediaRows, error: mediaError } = await supabase
+          .from('post_media')
+          .select('post_id, media_type, bucket, path, width, height, duration_seconds')
+          .in('post_id', postIds);
+        if (mediaError) {
+          handleError(mediaError);
+        }
+        mediaMap = (mediaRows || []).reduce((acc, row) => {
+          if (!acc[row.post_id]) acc[row.post_id] = [];
+          const bucket = row.bucket || 'post_media';
+          const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(row.path || '');
+          acc[row.post_id].push({
+            mediaType: row.media_type,
+            bucket,
+            path: row.path,
+            width: row.width,
+            height: row.height,
+            durationSeconds: row.duration_seconds,
+            publicUrl: urlData?.publicUrl || null,
+          });
+          return acc;
+        }, {});
+      }
+
+      const mapped = postRows.map((row) => {
+      const authorName = row.full_name || profile?.full_name || 'Utente';
+      const authorAvatarUrl = authorMap[row.author_id] || resolveAvatarUrl(profile?.avatar_url);
+        const mediaItems = mediaMap[row.id] || [];
+        const fallbackImage = mediaItems.find((item) => item.mediaType?.startsWith('image'));
+        const image = fallbackImage?.publicUrl || null;
+        return {
+          id: row.id,
+          authorId: row.author_id,
+        author: authorName,
+        displayName: authorName,
+        avatarColor: getAvatarColor(row.author_id),
+        authorAvatarUrl,
+        time: formatTime(row.created_at),
+          content: row.content,
+          image,
+          mediaPath: mediaItems[0]?.path || null,
+          mediaBucket: mediaItems[0]?.bucket || null,
+          mediaItems,
+          likes: [],
+          comments: [],
+        };
+      });
+      setPosts((prev) => (pageNumber === 0 ? mapped : [...prev, ...mapped]));
+      setPostsHasMore((data || []).length === 20);
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setPostsLoading(false);
+    }
+  }, [formatTime, getAvatarColor, handleError, postsHasMore, profile?.avatar_url, profile?.full_name, profileId, resolveAvatarUrl]);
+
+  const fetchFollowers = useCallback(async (pageNumber) => {
+    if (!profileId) return;
+    if (!followersHasMore && pageNumber > 0) return;
+    setFollowersLoading(true);
+    const from = pageNumber * 20;
+    const to = from + 19;
+    try {
+      const { data, error: followError } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .eq('following_id', profileId)
+        .range(from, to);
+      if (followError) {
+        handleError(followError);
+        setFollowersLoading(false);
+        return;
+      }
+      const ids = (data || []).map((row) => row.follower_id).filter(Boolean);
+      let profilesMap = {};
+      if (ids.length) {
+        const { data: profileRows, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', ids);
+        if (profilesError) {
+          handleError(profilesError);
+          setFollowersLoading(false);
+          return;
+        }
+        profilesMap = (profileRows || []).reduce((acc, row) => {
+          acc[row.id] = row;
+          return acc;
+        }, {});
+      }
+      const mapped = ids
+        .map((id) => {
+          const row = profilesMap[id];
+          if (!row) return null;
+          return { id, fullName: row.full_name || 'Utente', avatarUrl: row.avatar_url || '' };
+        })
+        .filter(Boolean);
+      setFollowers((prev) => (pageNumber === 0 ? mapped : [...prev, ...mapped]));
+      setFollowersHasMore((data || []).length === 20);
+      if (user?.id && ids.length) {
+        const { data: followRows, error: followError2 } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id)
+          .in('following_id', ids);
+        if (followError2) {
+          handleError(followError2);
+        }
+        const followSet = new Set((followRows || []).map((row) => row.following_id));
+        setFollowStatus((prev) => {
+          const next = { ...prev };
+          ids.forEach((id) => {
+            next[id] = followSet.has(id);
+          });
+          return next;
+        });
+      }
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFollowersLoading(false);
+    }
+  }, [followersHasMore, handleError, profileId, user?.id]);
+
+  const fetchFollowing = useCallback(async (pageNumber) => {
+    if (!profileId) return;
+    if (!followingHasMore && pageNumber > 0) return;
+    setFollowingLoading(true);
+    const from = pageNumber * 20;
+    const to = from + 19;
+    try {
+      const { data, error: followError } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', profileId)
+        .range(from, to);
+      if (followError) {
+        handleError(followError);
+        setFollowingLoading(false);
+        return;
+      }
+      const ids = (data || []).map((row) => row.following_id).filter(Boolean);
+      let profilesMap = {};
+      if (ids.length) {
+        const { data: profileRows, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', ids);
+        if (profilesError) {
+          handleError(profilesError);
+          setFollowingLoading(false);
+          return;
+        }
+        profilesMap = (profileRows || []).reduce((acc, row) => {
+          acc[row.id] = row;
+          return acc;
+        }, {});
+      }
+      const mapped = ids
+        .map((id) => {
+          const row = profilesMap[id];
+          if (!row) return null;
+          return { id, fullName: row.full_name || 'Utente', avatarUrl: row.avatar_url || '' };
+        })
+        .filter(Boolean);
+      setFollowing((prev) => (pageNumber === 0 ? mapped : [...prev, ...mapped]));
+      setFollowingHasMore((data || []).length === 20);
+      if (user?.id && ids.length) {
+        const { data: followRows, error: followError2 } = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id)
+          .in('following_id', ids);
+        if (followError2) {
+          handleError(followError2);
+        }
+        const followSet = new Set((followRows || []).map((row) => row.following_id));
+        setFollowStatus((prev) => {
+          const next = { ...prev };
+          ids.forEach((id) => {
+            next[id] = followSet.has(id);
+          });
+          return next;
+        });
+      }
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setFollowingLoading(false);
+    }
+  }, [followingHasMore, handleError, profileId, user?.id]);
+
+  useEffect(() => {
+    if (!canViewPrivate) return;
+    fetchPosts(postsPage);
+  }, [canViewPrivate, fetchPosts, postsPage]);
+
+  useEffect(() => {
+    if (!canViewPrivate) return;
+    if (activeList === 'followers') {
+      fetchFollowers(followersPage);
+    }
+  }, [activeList, canViewPrivate, fetchFollowers, followersPage]);
+
+  useEffect(() => {
+    if (!canViewPrivate) return;
+    if (activeList === 'following') {
+      fetchFollowing(followingPage);
+    }
+  }, [activeList, canViewPrivate, fetchFollowing, followingPage]);
+
+  const toggleRowFollow = async (targetId) => {
+    if (!user || !targetId || targetId === user.id) return;
+    if (rowLoading[targetId]) return;
+    const currentlyFollowing = Boolean(followStatus[targetId]);
+    setFollowStatus((prev) => ({ ...prev, [targetId]: !currentlyFollowing }));
+    setRowLoading((prev) => ({ ...prev, [targetId]: true }));
+    if (!currentlyFollowing) {
+      const { error: insertError } = await supabase
+        .from('follows')
+        .insert({ follower_id: user.id, following_id: targetId });
+      if (insertError && insertError.code !== '23505') {
+        setFollowStatus((prev) => ({ ...prev, [targetId]: currentlyFollowing }));
+      }
+    } else {
+      const { error: deleteError } = await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', user.id)
+        .eq('following_id', targetId);
+      if (deleteError) {
+        setFollowStatus((prev) => ({ ...prev, [targetId]: currentlyFollowing }));
+      }
+    }
+    setRowLoading((prev) => ({ ...prev, [targetId]: false }));
+  };
+
+  if (!isValidProfileId) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Navbar
+          title={profileStrings.title || strings.menu.userProfile}
+          isRTL={isRTL}
+          isElevated
+          onBack={() => navigation.goBack()}
+          backLabel={strings.tabs.home}
+        />
+        <View style={[styles.content, isWeb && styles.webContent]}>
+          <View style={styles.card}>
+            <Text style={[styles.mutedText, isRTL && styles.rtlText]}>
+              Profilo non disponibile.
+            </Text>
+            <TouchableOpacity style={styles.followButton} onPress={() => navigation.goBack()}>
+              <Text style={styles.followButtonText}>Torna indietro</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <Navbar
         title={profileStrings.title || strings.menu.userProfile}
         isRTL={isRTL}
+        isElevated
         onBack={() => navigation.goBack()}
         backLabel={strings.tabs.home}
       />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={[styles.scrollView, isWeb && styles.webScrollView]}
+        contentContainerStyle={[styles.content, isWeb && styles.webContent]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={[styles.headerCard, isRTL && styles.rowReverse]}>
           <View style={styles.avatarBorder}>
-            {profile.avatar ? (
-              <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: profile.avatarColor }]}>
+              <View style={[styles.avatarFallback, { backgroundColor: theme.colors.primary }]}>
                 <Text style={styles.avatarText}>{initials}</Text>
               </View>
             )}
           </View>
           <View style={styles.headerMeta}>
-            <Text style={[styles.name, isRTL && styles.rtlText]}>{profile.name}</Text>
-            <Text style={[styles.username, isRTL && styles.rtlText]}>{profile.username}</Text>
-            <View
-              style={[styles.contactPill, canViewProfile ? styles.contactActive : styles.contactLocked]}
-            >
-              <Text style={styles.contactPillText}>
-                {canViewProfile
-                  ? profileStrings.contactLabel || 'Nella tua lista contatti'
-                  : profileStrings.closedProfile || 'Profilo chiuso'}
+            <Text style={[styles.name, isRTL && styles.rtlText]}>
+              {profile?.full_name || strings.menu?.userProfile || 'Profilo'}
+            </Text>
+            {!isSelf ? (
+              <TouchableOpacity
+                style={[styles.followButton, isFollowingUser && styles.followButtonActive]}
+                onPress={handleToggleFollow}
+                disabled={toggling}
+              >
+                {toggling ? (
+                  <ActivityIndicator size="small" color={theme.colors.card} />
+                ) : (
+                  <>
+                    <Text style={styles.followButtonText}>
+                      {isFollowingUser ? 'Seguito' : 'Segui'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            {loading ? (
+              <View style={[styles.loadingRow, styles.bioBlock, isRTL && styles.rowReverse]}>
+                <ActivityIndicator size="small" color={theme.colors.secondary} />
+                <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento profilo...</Text>
+              </View>
+            ) : profile?.bio ? (
+              <Text style={[styles.bio, styles.bioBlock, isRTL && styles.rtlText]}>{profile.bio}</Text>
+            ) : (
+              <Text style={[styles.bioPlaceholder, styles.bioBlock, isRTL && styles.rtlText]}>
+                Nessuna bio disponibile.
               </Text>
+            )}
+            <View style={[styles.headerButtons, isRTL && styles.rowReverse]}>
+              {['following', 'followers'].map((key) => {
+                const label = key === 'following' ? 'Seguiti' : 'Seguaci';
+                const countValue = key === 'following' ? followingCount : followersCount;
+                const countLabel = canViewPrivate ? String(countValue ?? 0) : '—';
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => {
+                      if (!canViewPrivate && !isSelf) {
+                        setPrivacyHint('Segui questo utente per vedere seguiti e seguaci');
+                        return;
+                      }
+                      setPrivacyHint('');
+                      setActiveList((prev) => (prev === key ? null : key));
+                    }}
+                    style={[
+                      styles.headerButton,
+                      activeList === key && styles.headerButtonActive,
+                      !canViewPrivate && !isSelf && styles.headerButtonDisabled,
+                    ]}
+                  >
+                    <Text style={[styles.headerButtonText, activeList === key && styles.headerButtonTextActive]}>
+                      {label}
+                    </Text>
+                    <Text style={[styles.headerCount, activeList === key && styles.headerCountActive]}>
+                      {countLabel}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
 
-        {!canViewProfile && (
+        {error ? (
+          <View style={styles.card}>
+            <Text style={[styles.errorText, isRTL && styles.rtlText]}>{error.message}</Text>
+          </View>
+        ) : null}
+
+        {!canViewPrivate && !isSelf ? (
+          <View style={styles.card}>
+            <Text style={[styles.mutedText, isRTL && styles.rtlText]}>
+              {privacyHint || 'Segui questo utente per vedere post e connessioni.'}
+            </Text>
+          </View>
+        ) : (
           <>
-            <View style={styles.card}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-                {profileStrings.infoTitle || 'Informazioni'}
-              </Text>
-              <Text style={[styles.bio, isRTL && styles.rtlText]}>{profile.bio}</Text>
-            </View>
+            {activeList === 'followers' ? (
+              followersLoading && followers.length === 0 ? (
+                <View style={styles.card}>
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={theme.colors.secondary} />
+                    <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento seguaci...</Text>
+                  </View>
+                </View>
+              ) : followers.length === 0 ? (
+                <View style={styles.card}>
+                  <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Nessun seguace.</Text>
+                </View>
+              ) : (
+                <>
+                  {followers.map((item) => (
+                    <View key={item.id} style={[styles.followRow, isRTL && styles.rowReverse]}>
+                      <TouchableOpacity
+                        style={[styles.followInfo, isRTL && styles.rowReverse]}
+                        onPress={() => navigation.navigate('PublicProfile', { profileId: item.id })}
+                      >
+                        <View style={styles.followAvatar}>
+                          {item.avatarUrl ? (
+                            <Image source={{ uri: item.avatarUrl }} style={styles.followAvatarImage} />
+                          ) : (
+                            <Text style={styles.followAvatarText}>
+                              {getInitials(item.fullName || 'U')}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.followMeta}>
+                          <Text style={[styles.followName, isRTL && styles.rtlText]}>{item.fullName}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.followButtonSmall,
+                          followStatus[item.id] && styles.followButtonSmallActive,
+                        ]}
+                        onPress={() => toggleRowFollow(item.id)}
+                        disabled={rowLoading[item.id]}
+                      >
+                        {rowLoading[item.id] ? (
+                          <ActivityIndicator size="small" color={theme.colors.card} />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.followButtonSmallText,
+                              !followStatus[item.id] && styles.followButtonSmallTextInactive,
+                            ]}
+                          >
+                            {followStatus[item.id] ? 'Seguito' : 'Segui'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {followersLoading ? (
+                    <View style={styles.card}>
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator size="small" color={theme.colors.secondary} />
+                        <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento...</Text>
+                      </View>
+                    </View>
+                  ) : followersHasMore ? (
+                    <TouchableOpacity
+                      style={styles.loadMoreButton}
+                      onPress={() => setFollowersPage((prev) => prev + 1)}
+                    >
+                      <Text style={styles.loadMoreText}>Carica altri</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )
+            ) : null}
 
-            <View style={styles.card}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-                {profileStrings.closedProfile || 'Profilo chiuso'}
-              </Text>
-              <Text style={[styles.mutedText, isRTL && styles.rtlText]}>
-                Questo profilo è privato.
-              </Text>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={() => setContactStatus(profile.id, true)}
-                accessibilityRole="button"
-              >
-                <Text style={styles.primaryButtonText}>Collegati</Text>
-              </TouchableOpacity>
-              <Text style={[styles.helperText, isRTL && styles.rtlText]}>
-                {profileStrings.fakeHint || 'Stiamo mostrando un profilo dimostrativo.'}
-              </Text>
-            </View>
-          </>
-        )}
+            {activeList === 'following' ? (
+              followingLoading && following.length === 0 ? (
+                <View style={styles.card}>
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={theme.colors.secondary} />
+                    <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento seguiti...</Text>
+                  </View>
+                </View>
+              ) : following.length === 0 ? (
+                <View style={styles.card}>
+                  <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Nessun seguito.</Text>
+                </View>
+              ) : (
+                <>
+                  {following.map((item) => (
+                    <View key={item.id} style={[styles.followRow, isRTL && styles.rowReverse]}>
+                      <TouchableOpacity
+                        style={[styles.followInfo, isRTL && styles.rowReverse]}
+                        onPress={() => navigation.navigate('PublicProfile', { profileId: item.id })}
+                      >
+                        <View style={styles.followAvatar}>
+                          {item.avatarUrl ? (
+                            <Image source={{ uri: item.avatarUrl }} style={styles.followAvatarImage} />
+                          ) : (
+                            <Text style={styles.followAvatarText}>
+                              {getInitials(item.fullName || 'U')}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.followMeta}>
+                          <Text style={[styles.followName, isRTL && styles.rtlText]}>{item.fullName}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.followButtonSmall,
+                          followStatus[item.id] && styles.followButtonSmallActive,
+                        ]}
+                        onPress={() => toggleRowFollow(item.id)}
+                        disabled={rowLoading[item.id]}
+                      >
+                        {rowLoading[item.id] ? (
+                          <ActivityIndicator size="small" color={theme.colors.card} />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.followButtonSmallText,
+                              !followStatus[item.id] && styles.followButtonSmallTextInactive,
+                            ]}
+                          >
+                            {followStatus[item.id] ? 'Seguito' : 'Segui'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {followingLoading ? (
+                    <View style={styles.card}>
+                      <View style={styles.loadingRow}>
+                        <ActivityIndicator size="small" color={theme.colors.secondary} />
+                        <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento...</Text>
+                      </View>
+                    </View>
+                  ) : followingHasMore ? (
+                    <TouchableOpacity
+                      style={styles.loadMoreButton}
+                      onPress={() => setFollowingPage((prev) => prev + 1)}
+                    >
+                      <Text style={styles.loadMoreText}>Carica altri</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )
+            ) : null}
 
-        {canViewProfile && (
-          <>
-            <View style={styles.card}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-                {profileStrings.infoTitle || 'Informazioni'}
-              </Text>
-              <View style={styles.infoRow}>
-                <Text style={[styles.mutedText, isRTL && styles.rtlText]}>
-                  {profileStrings.city || 'Città'}
-                </Text>
-                <Text style={[styles.infoText, isRTL && styles.rtlText]}>{profile.city}</Text>
+            {postsLoading && posts.length === 0 ? (
+              <View style={styles.card}>
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator size="small" color={theme.colors.secondary} />
+                  <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento post...</Text>
+                </View>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={[styles.mutedText, isRTL && styles.rtlText]}>
-                  {profileStrings.interests || 'Interessi'}
-                </Text>
-                <Text style={[styles.infoText, isRTL && styles.rtlText]}>{profile.interests}</Text>
+            ) : posts.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Nessun post ancora.</Text>
               </View>
-              <Text style={[styles.bio, isRTL && styles.rtlText]}>{profile.bio}</Text>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => setContactStatus(profile.id, false)}
-                accessibilityRole="button"
-              >
-                <Text style={styles.secondaryButtonText}>Rimuovi</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>
-                {profileStrings.postsTitle || 'Post recenti'}
-              </Text>
-              {profile.posts.map((post) => (
-                <PostCard key={post.id} post={post} isRTL={isRTL} />
-              ))}
-            </View>
+            ) : (
+              <>
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} isRTL={isRTL} />
+                ))}
+                {postsLoading ? (
+                  <View style={styles.card}>
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator size="small" color={theme.colors.secondary} />
+                      <Text style={[styles.mutedText, isRTL && styles.rtlText]}>Caricamento...</Text>
+                    </View>
+                  </View>
+                ) : postsHasMore ? (
+                  <TouchableOpacity
+                    style={styles.loadMoreButton}
+                    onPress={() => setPostsPage((prev) => prev + 1)}
+                  >
+                    <Text style={styles.loadMoreText}>Carica altri</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </ScrollView>
@@ -164,9 +887,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
+  scrollView: {
+    flex: 1,
+  },
+  webScrollView: {
+    width: '100%',
+  },
   content: {
     padding: theme.spacing.lg,
     gap: theme.spacing.md,
+    flexGrow: 1,
+  },
+  webContent: {
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
+    paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
+    minHeight: '100%',
   },
   headerCard: {
     backgroundColor: theme.colors.card,
@@ -208,26 +943,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: theme.colors.text,
   },
-  username: {
-    color: theme.colors.muted,
-  },
-  contactPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 18,
-    marginTop: theme.spacing.xs,
-  },
-  contactActive: {
-    backgroundColor: 'rgba(12,27,51,0.08)',
-  },
-  contactLocked: {
-    backgroundColor: 'rgba(215,35,35,0.12)',
-  },
-  contactPillText: {
-    color: theme.colors.text,
-    fontWeight: '700',
-  },
   card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
@@ -235,24 +950,116 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
     gap: theme.spacing.sm,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
   mutedText: {
     color: theme.colors.muted,
     lineHeight: 20,
   },
-  helperText: {
+  bioBlock: {
+    marginTop: theme.spacing.sm,
+  },
+  bioPlaceholder: {
+    color: theme.colors.muted,
+    lineHeight: 20,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  headerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(12,27,51,0.08)',
+  },
+  headerButtonActive: {
+    backgroundColor: theme.colors.secondary,
+  },
+  headerButtonDisabled: {
+    opacity: 0.6,
+  },
+  headerButtonText: {
     color: theme.colors.text,
     fontWeight: '700',
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  headerButtonTextActive: {
+    color: theme.colors.card,
   },
-  infoText: {
+  headerCount: {
+    color: theme.colors.muted,
+    fontWeight: '700',
+  },
+  headerCountActive: {
+    color: theme.colors.card,
+  },
+  followRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(12,27,51,0.06)',
+  },
+  followInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  followAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(12,27,51,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followAvatarText: {
+    fontWeight: '800',
+    color: theme.colors.secondary,
+  },
+  followAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 22,
+  },
+  followMeta: {
+    flex: 1,
+    gap: 2,
+  },
+  followName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  followButtonSmall: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(12,27,51,0.08)',
+  },
+  followButtonSmallActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  followButtonSmallText: {
+    color: theme.colors.card,
+    fontWeight: '700',
+  },
+  followButtonSmallTextInactive: {
+    color: theme.colors.text,
+  },
+  loadMoreButton: {
+    alignSelf: 'center',
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(12,27,51,0.08)',
+  },
+  loadMoreText: {
     color: theme.colors.text,
     fontWeight: '700',
   },
@@ -267,29 +1074,29 @@ const styles = StyleSheet.create({
   rowReverse: {
     flexDirection: 'row-reverse',
   },
-  primaryButton: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
+  followButton: {
+    alignSelf: 'flex-start',
     paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
     borderRadius: theme.radius.md,
-    alignItems: 'center',
-    marginTop: theme.spacing.xs,
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.colors.secondary,
   },
-  primaryButtonText: {
+  followButtonActive: {
+    backgroundColor: theme.colors.primary,
+  },
+  followButtonText: {
     color: theme.colors.card,
     fontWeight: '800',
   },
-  secondaryButton: {
-    backgroundColor: 'rgba(12,27,51,0.08)',
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radius.md,
+  loadingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: theme.spacing.sm,
+    gap: theme.spacing.sm,
   },
-  secondaryButtonText: {
-    color: theme.colors.text,
-    fontWeight: '800',
+  errorText: {
+    color: theme.colors.primary,
+    fontWeight: '700',
   },
 });
 

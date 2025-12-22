@@ -2,12 +2,18 @@ import React from 'react';
 import { Platform, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import theme from '../styles/theme';
+import { WEB_TAB_BAR_WIDTH } from './WebTabBar';
 
-const Navbar = ({ title, rightContent, onBack, backLabel, isRTL = false }) => {
+const Navbar = ({ title, rightContent, onBack, backLabel, isRTL = false, isElevated = false }) => {
+  const isWeb = Platform.OS === 'web';
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isWeb && isElevated && styles.webSafeArea]}>
       <StatusBar barStyle="light-content" />
-      <View style={[styles.container, isRTL && styles.rtlContainer]}>
+      <View style={[
+        styles.container,
+        isRTL && styles.rtlContainer,
+        isWeb && isElevated && styles.webContainer,
+      ]}>
         <View style={[styles.leftGroup, isRTL && styles.leftGroupRtl]}>
           {onBack ? (
             <TouchableOpacity
@@ -36,6 +42,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.secondary,
     paddingTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
   },
+  webSafeArea: {
+    position: 'sticky',
+    top: 0,
+    zIndex: 20,
+  },
   container: {
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.md,
@@ -43,6 +54,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: theme.colors.secondary,
+  },
+  webContainer: {
+    minHeight: 64,
+    paddingVertical: theme.spacing.md,
+    paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
+    paddingRight: theme.spacing.xl,
+    zIndex: 20,
   },
   leftGroup: {
     flexDirection: 'row',

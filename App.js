@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
-import { NavigationContainer, DefaultTheme as NavigationTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
@@ -27,9 +27,11 @@ import ContactsScreen from './app/screens/ContactsScreen';
 import { PostsProvider } from './app/context/PostsContext';
 import theme from './app/styles/theme';
 import WebTabBar from './app/components/WebTabBar';
+import WebSidebar from './app/components/WebSidebar';
 import AuthScreen from './app/screens/AuthScreen';
 import useSession from './app/auth/useSession';
 import useProfile from './app/profile/useProfile';
+import ErrorBoundary from './app/components/ErrorBoundary';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -47,8 +49,9 @@ const navigationTheme = {
 };
 
 const AppTabs = () => {
-  const { strings } = useLanguage();
+  const { strings, isRTL } = useLanguage();
   const isWeb = Platform.OS === 'web';
+  const navigation = useNavigation();
   const hiddenTabOptions = {
     tabBarButton: () => null,
     tabBarStyle: { display: 'none' },
@@ -95,8 +98,11 @@ const AppTabs = () => {
 
   const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} /> } : {};
 
+  const sidebarTitle = strings.home?.greeting || strings.menu?.userProfile;
+
   return (
-    <Tab.Navigator screenOptions={screenOptions} {...navigatorProps}>
+    <>
+      <Tab.Navigator screenOptions={screenOptions} {...navigatorProps}>
       <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: strings.tabs.home }} />
       <Tab.Screen name="Chat" component={ChatScreen} options={{ tabBarLabel: strings.tabs.chat }} />
       <Tab.Screen name="Notizie" component={NewsScreen} options={{ tabBarLabel: strings.tabs.news }} />
@@ -124,9 +130,14 @@ const AppTabs = () => {
       />
       <Tab.Screen
         name="PublicProfile"
-        component={PublicProfileScreen}
         options={{ tabBarLabel: strings.menu.userProfile, ...hiddenTabOptions }}
-      />
+      >
+        {(props) => (
+          <ErrorBoundary onBack={() => props.navigation.goBack()}>
+            <PublicProfileScreen {...props} />
+          </ErrorBoundary>
+        )}
+      </Tab.Screen>
       <Tab.Screen
         name="PrivacyPolicy"
         component={PrivacyPolicyScreen}
@@ -162,7 +173,14 @@ const AppTabs = () => {
         component={ContactsScreen}
         options={{ tabBarLabel: strings.menu.contacts || 'Contatti', ...hiddenTabOptions }}
       />
-    </Tab.Navigator>
+      </Tab.Navigator>
+      <WebSidebar
+        title={sidebarTitle}
+        menuStrings={strings.menu}
+        navigation={navigation}
+        isRTL={isRTL}
+      />
+    </>
   );
 };
 
