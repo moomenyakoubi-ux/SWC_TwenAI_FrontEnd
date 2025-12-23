@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   SafeAreaView,
@@ -63,6 +64,7 @@ const PublicProfileScreen = ({ route, navigation }) => {
   const [followingHasMore, setFollowingHasMore] = useState(true);
   const [followStatus, setFollowStatus] = useState({});
   const [rowLoading, setRowLoading] = useState({});
+  const [startingChat, setStartingChat] = useState(false);
 
   const isSelf = user?.id === profileId;
 
@@ -205,6 +207,27 @@ const PublicProfileScreen = ({ route, navigation }) => {
 
   const profileStrings = strings.profiles ?? {};
   const canViewPrivate = isSelf || isFollowingUser;
+  const canMessage = isFollowingUser && !isSelf;
+
+  const handleMessagePress = async () => {
+    if (!user || !isValidProfileId || startingChat || !canMessage) return;
+    setStartingChat(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_or_create_dm', {
+        other_user_id: profileId,
+      });
+      const conversationId = data?.conversation_id || data;
+      if (rpcError || !conversationId) {
+        Alert.alert('Messaggio', 'You can message this user only if you follow them');
+        return;
+      }
+      navigation.navigate('Chat', { conversationId });
+    } catch (err) {
+      Alert.alert('Messaggio', 'You can message this user only if you follow them');
+    } finally {
+      setStartingChat(false);
+    }
+  };
 
   const fetchCounts = useCallback(async () => {
     if (!isValidProfileId) return;
@@ -643,6 +666,19 @@ const PublicProfileScreen = ({ route, navigation }) => {
                 Nessuna bio disponibile.
               </Text>
             )}
+            {canMessage ? (
+              <TouchableOpacity
+                style={[styles.messageButton, startingChat && styles.messageButtonDisabled]}
+                onPress={handleMessagePress}
+                disabled={startingChat}
+              >
+                {startingChat ? (
+                  <ActivityIndicator size="small" color={theme.colors.card} />
+                ) : (
+                  <Text style={styles.messageButtonText}>Messaggio</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
             <View style={[styles.headerButtons, isRTL && styles.rowReverse]}>
               {['following', 'followers'].map((key) => {
                 const label = key === 'following' ? 'Seguiti' : 'Seguaci';
@@ -1086,6 +1122,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.primary,
   },
   followButtonText: {
+    color: theme.colors.card,
+    fontWeight: '800',
+  },
+  messageButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
+    borderRadius: theme.radius.md,
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.colors.primary,
+  },
+  messageButtonDisabled: {
+    opacity: 0.7,
+  },
+  messageButtonText: {
     color: theme.colors.card,
     fontWeight: '800',
   },

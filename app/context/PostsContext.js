@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import useSession from '../auth/useSession';
 import theme from '../styles/theme';
@@ -49,12 +50,83 @@ export const PostsProvider = ({ children }) => {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const avatarCacheRef = useRef(new Map());
+  const [likePending, setLikePending] = useState({});
+  const likePendingRef = useRef(new Set());
+  const likeGraceRef = useRef(new Map());
+  const likesCountUpdatedAtRef = useRef(new Map());
+  const commentsCountUpdatedAtRef = useRef(new Map());
+  const seenEventsRef = useRef(new Map());
 
   const resolveAvatarUrl = useCallback((value) => {
     if (!value) return null;
     if (/^https?:\/\//i.test(value)) return value;
     const { data } = supabase.storage.from('avatars').getPublicUrl(value);
     return data?.publicUrl || null;
+  }, []);
+
+  const mergeComments = useCallback((serverComments, existingComments) => {
+    const map = new Map();
+    (serverComments || []).forEach((comment) => map.set(comment.id, comment));
+    (existingComments || []).forEach((comment) => {
+      if (!map.has(comment.id)) {
+        map.set(comment.id, comment);
+      }
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, []);
+
+  const isLikeProtected = useCallback((postId) => {
+    if (likePendingRef.current.has(postId)) return true;
+    const exp = likeGraceRef.current.get(postId);
+    return Boolean(exp && exp > Date.now());
+  }, []);
+
+  const bumpLikeGrace = useCallback((postId, ms = 2500) => {
+    likeGraceRef.current.set(postId, Date.now() + ms);
+  }, []);
+
+  const shouldApplyEvent = useCallback((key, ttl = 10000) => {
+    const now = Date.now();
+    const exp = seenEventsRef.current.get(key);
+    if (exp && exp > now) return false;
+    seenEventsRef.current.set(key, now + ttl);
+    return true;
+  }, []);
+
+  const cleanupSeenEvents = useCallback(() => {
+    const now = Date.now();
+    for (const [key, exp] of seenEventsRef.current.entries()) {
+      if (exp <= now) seenEventsRef.current.delete(key);
+    }
+  }, []);
+
+  const isLikesCountRecent = useCallback((postId, ms = 3000) => {
+    const updatedAt = likesCountUpdatedAtRef.current.get(postId);
+    return Boolean(updatedAt && Date.now() - updatedAt < ms);
+  }, []);
+
+  const isCommentsCountRecent = useCallback((postId, ms = 3000) => {
+    const updatedAt = commentsCountUpdatedAtRef.current.get(postId);
+    return Boolean(updatedAt && Date.now() - updatedAt < ms);
+  }, []);
+
+  const setLikePendingState = useCallback((postId, value) => {
+    setLikePending((prev) => {
+      const next = { ...prev };
+      if (value) {
+        next[postId] = true;
+      } else {
+        delete next[postId];
+      }
+      return next;
+    });
+    if (value) {
+      likePendingRef.current.add(postId);
+    } else {
+      likePendingRef.current.delete(postId);
+    }
   }, []);
 
   const fetchPosts = useCallback(async ({ reset = false } = {}) => {
@@ -77,7 +149,6 @@ export const PostsProvider = ({ children }) => {
     const from = currentPage * 20;
     const to = from + 19;
 
-    console.log('FEED FETCH start', { userId: user?.id, page: currentPage });
     setFeedError(null);
     setLoadingMore(currentPage > 0);
 
@@ -131,8 +202,6 @@ export const PostsProvider = ({ children }) => {
       )
     `;
 
-    console.log('FEED FETCH select', FEED_SELECT);
-
     const { data, error } = await supabase
       .from('posts')
       .select(FEED_SELECT)
@@ -140,10 +209,7 @@ export const PostsProvider = ({ children }) => {
       .order('created_at', { ascending: false })
       .range(from, to);
 
-    console.log('FEED FETCH result', { len: data?.length, error });
-
     if (error) {
-      console.error('fetchPosts error:', error);
       setFeedError(error);
       setLoadingMore(false);
       return;
@@ -242,14 +308,74 @@ export const PostsProvider = ({ children }) => {
         mediaBucket: firstMedia?.bucket || null,
         mediaItems,
         likes,
+        likes_count: likes.length,
+        comments_count: comments.length,
         comments,
       };
     });
 
-    setPosts((prev) => (currentPage === 0 ? mapped : [...prev, ...mapped]));
+    setPosts((prev) => {
+      const prevMap = new Map(prev.map((post) => [post.id, post]));
+      const merged = mapped.map((post) => {
+        const existing = prevMap.get(post.id);
+        if (!existing) return post;
+        const keepLikes = isLikeProtected(post.id) || isLikesCountRecent(post.id) ? existing.likes : post.likes;
+        const existingLikesCount =
+          typeof existing.likes_count === 'number' ? existing.likes_count : existing.likes?.length || 0;
+        const serverLikesCount =
+          typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0;
+        const keepLikesCount = isLikeProtected(post.id) || isLikesCountRecent(post.id);
+        const nextLikesCount = keepLikesCount ? existingLikesCount : serverLikesCount;
+        const existingCommentsCount =
+          typeof existing.comments_count === 'number' ? existing.comments_count : existing.comments?.length || 0;
+        const serverCommentsCount =
+          typeof post.comments_count === 'number' ? post.comments_count : post.comments?.length || 0;
+        const keepCommentsCount = isCommentsCountRecent(post.id);
+        const nextCommentsCount = keepCommentsCount ? existingCommentsCount : serverCommentsCount;
+        const mergedComments = mergeComments(post.comments, existing.comments);
+        return {
+          ...post,
+          likes: keepLikes,
+          likes_count: nextLikesCount,
+          comments_count: nextCommentsCount,
+          comments: mergedComments,
+        };
+      });
+      if (currentPage === 0) {
+        for (const [key, exp] of likeGraceRef.current.entries()) {
+          if (exp <= Date.now()) likeGraceRef.current.delete(key);
+        }
+        cleanupSeenEvents();
+        for (const [key, updatedAt] of commentsCountUpdatedAtRef.current.entries()) {
+          if (Date.now() - updatedAt > 10000) commentsCountUpdatedAtRef.current.delete(key);
+        }
+        for (const [key, updatedAt] of likesCountUpdatedAtRef.current.entries()) {
+          if (Date.now() - updatedAt > 10000) likesCountUpdatedAtRef.current.delete(key);
+        }
+        return merged;
+      }
+      const combined = [...prev, ...merged];
+      const dedup = new Map();
+      combined.forEach((post) => {
+        if (!dedup.has(post.id)) {
+          dedup.set(post.id, post);
+        }
+      });
+      for (const [key, exp] of likeGraceRef.current.entries()) {
+        if (exp <= Date.now()) likeGraceRef.current.delete(key);
+      }
+      cleanupSeenEvents();
+      for (const [key, updatedAt] of likesCountUpdatedAtRef.current.entries()) {
+        if (Date.now() - updatedAt > 10000) likesCountUpdatedAtRef.current.delete(key);
+      }
+      for (const [key, updatedAt] of commentsCountUpdatedAtRef.current.entries()) {
+        if (Date.now() - updatedAt > 10000) commentsCountUpdatedAtRef.current.delete(key);
+      }
+      return Array.from(dedup.values());
+    });
     setHasMore((data || []).length === 20);
     setLoadingMore(false);
-  }, [loading, page, resolveAvatarUrl, user]);
+  }, [cleanupSeenEvents, isCommentsCountRecent, isLikeProtected, isLikesCountRecent, loading, mergeComments, page, resolveAvatarUrl, user]);
 
   useEffect(() => {
     if (loading) return;
@@ -261,6 +387,79 @@ export const PostsProvider = ({ children }) => {
   }, [fetchPosts, loading, user?.id]);
 
   useEffect(() => {
+    if (!user) return undefined;
+
+    const likesChannel = supabase.channel('realtime:post_likes');
+    const commentsChannel = supabase.channel('realtime:post_comments');
+
+    const applyLikeEvent = (eventType, payload) => {
+      const row = eventType === 'INSERT' ? payload?.new : payload?.old;
+      const postId = row?.post_id;
+      const userId = row?.user_id;
+      if (!postId || !userId) return;
+      const key = `like:${eventType === 'INSERT' ? 'ins' : 'del'}:${postId}:${userId}`;
+      if (!shouldApplyEvent(key)) return;
+
+      likesCountUpdatedAtRef.current.set(postId, Date.now());
+      setPosts((prev) =>
+        prev.map((post) => {
+          if (post.id !== postId) return post;
+          const baseCount =
+            typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0;
+          const nextCount =
+            eventType === 'INSERT' ? baseCount + 1 : Math.max(baseCount - 1, 0);
+          return { ...post, likes_count: nextCount };
+        }),
+      );
+    };
+
+    const applyCommentEvent = (eventType, payload) => {
+      const row = eventType === 'INSERT' ? payload?.new : payload?.old;
+      const postId = row?.post_id;
+      const commentId = row?.id;
+      const userId = row?.user_id;
+      const createdAt = row?.created_at;
+      if (!postId) return;
+      const fallbackKey = `${userId || 'anon'}:${createdAt || 'na'}`;
+      const key = `cmt:${eventType === 'INSERT' ? 'ins' : 'del'}:${postId}:${commentId || fallbackKey}`;
+      if (!shouldApplyEvent(key)) return;
+
+      commentsCountUpdatedAtRef.current.set(postId, Date.now());
+      setPosts((prev) =>
+        prev.map((post) => {
+          if (post.id !== postId) return post;
+          const baseCount =
+            typeof post.comments_count === 'number' ? post.comments_count : post.comments?.length || 0;
+          const nextCount =
+            eventType === 'INSERT' ? baseCount + 1 : Math.max(baseCount - 1, 0);
+          return { ...post, comments_count: nextCount };
+        }),
+      );
+    };
+
+    likesChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, (payload) =>
+      applyLikeEvent('INSERT', payload),
+    );
+    likesChannel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'post_likes' }, (payload) =>
+      applyLikeEvent('DELETE', payload),
+    );
+    commentsChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_comments' }, (payload) =>
+      applyCommentEvent('INSERT', payload),
+    );
+    commentsChannel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'post_comments' }, (payload) =>
+      applyCommentEvent('DELETE', payload),
+    );
+
+    likesChannel.subscribe();
+    commentsChannel.subscribe();
+
+    return () => {
+      supabase.removeChannel(likesChannel);
+      supabase.removeChannel(commentsChannel);
+    };
+  }, [shouldApplyEvent, user]);
+
+  useEffect(() => {
     if (loading) return;
     if (!user) return;
     if (page === 0) return;
@@ -269,7 +468,18 @@ export const PostsProvider = ({ children }) => {
 
   const addPost = (post) => {
     if (!post || !post.id) return;
-    setPosts((prev) => [{ ...post, likes: post.likes || [], comments: post.comments || [] }, ...prev]);
+    const likes = post.likes || [];
+    const comments = post.comments || [];
+    setPosts((prev) => [
+      {
+        ...post,
+        likes,
+        likes_count: post.likes_count ?? likes.length,
+        comments,
+        comments_count: post.comments_count ?? comments.length,
+      },
+      ...prev,
+    ]);
   };
 
   const createPost = async ({ content, mediaUri }) => {
@@ -308,7 +518,6 @@ export const PostsProvider = ({ children }) => {
       }
 
       const mediaType = blob.type?.startsWith('video') ? 'video' : 'image';
-      console.log('POST_MEDIA INSERT', { path, blobType: blob.type, mediaType });
       const { error: mediaError } = await supabase.from('post_media').insert({
         post_id: inserted.id,
         author_id: user.id,
@@ -342,6 +551,7 @@ export const PostsProvider = ({ children }) => {
       mediaPath,
       mediaBucket,
       likes: [],
+      likes_count: 0,
       comments: [],
     };
 
@@ -407,46 +617,88 @@ export const PostsProvider = ({ children }) => {
 
   const toggleLike = async (postId) => {
     if (!user) return;
-    let wasLiked = false;
+    if (likePendingRef.current.has(postId)) return;
+    setLikePendingState(postId, true);
+    bumpLikeGrace(postId);
+    let likedBefore = false;
+
     setPosts((prev) =>
       prev.map((post) => {
         if (post.id !== postId) return post;
         const hasSelf = post.likes.some((l) => l.userId === user.id);
-        wasLiked = hasSelf;
+        likedBefore = hasSelf;
+        const baseCount =
+          typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0;
         const nextLikes = hasSelf
           ? post.likes.filter((l) => l.userId !== user.id)
           : [{ userId: user.id, name: 'Tu', initials: 'TU' }, ...post.likes];
         const uniq = Array.from(new Map(nextLikes.map((l) => [l.userId, l])).values());
-        return { ...post, likes: uniq };
+        const nextCount = hasSelf ? Math.max(baseCount - 1, 0) : baseCount + 1;
+        return { ...post, likes: uniq, likes_count: nextCount };
       }),
     );
 
-    if (wasLiked) {
-      const { error } = await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id);
-      if (error) {
-        console.error('toggleLike delete error:', error);
-        setPosts((prev) =>
-          prev.map((post) => {
-            if (post.id !== postId) return post;
-            return {
-              ...post,
-              likes: [{ userId: user.id, name: 'Tu', initials: 'TU' }, ...post.likes],
-            };
-          }),
-        );
+    try {
+      const { data, error } = await supabase.rpc('toggle_like', { p_post_id: postId });
+      if (error) throw error;
+      const likedResult = Array.isArray(data) ? data[0]?.liked : data?.liked;
+      if (typeof likedResult !== 'boolean') {
+        throw new Error('Risposta like non valida.');
       }
-      return;
-    }
-
-    const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-    if (error) {
-      console.error('toggleLike insert error:', error);
+      const likeEventKey = `like:${likedResult ? 'ins' : 'del'}:${postId}:${user.id}`;
+      shouldApplyEvent(likeEventKey);
+      likesCountUpdatedAtRef.current.set(postId, Date.now());
       setPosts((prev) =>
         prev.map((post) => {
           if (post.id !== postId) return post;
-          return { ...post, likes: post.likes.filter((l) => l.userId !== user.id) };
+          const hasSelf = post.likes.some((l) => l.userId === user.id);
+          const baseCount =
+            typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0;
+          if (likedResult && !hasSelf) {
+            return {
+              ...post,
+              likes: [{ userId: user.id, name: 'Tu', initials: 'TU' }, ...post.likes],
+              likes_count: baseCount + 1,
+            };
+          }
+          if (!likedResult && hasSelf) {
+            return {
+              ...post,
+              likes: post.likes.filter((l) => l.userId !== user.id),
+              likes_count: Math.max(baseCount - 1, 0),
+            };
+          }
+          return post;
         }),
       );
+    } catch (err) {
+      Alert.alert('Like', 'Non siamo riusciti ad aggiornare il like. Riprova.');
+      setPosts((prev) =>
+        prev.map((post) => {
+          if (post.id !== postId) return post;
+          const hasSelf = post.likes.some((l) => l.userId === user.id);
+          const baseCount =
+            typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0;
+          if (likedBefore && !hasSelf) {
+            return {
+              ...post,
+              likes: [{ userId: user.id, name: 'Tu', initials: 'TU' }, ...post.likes],
+              likes_count: baseCount + 1,
+            };
+          }
+          if (!likedBefore && hasSelf) {
+            return {
+              ...post,
+              likes: post.likes.filter((l) => l.userId !== user.id),
+              likes_count: Math.max(baseCount - 1, 0),
+            };
+          }
+          return post;
+        }),
+      );
+    } finally {
+      bumpLikeGrace(postId);
+      setLikePendingState(postId, false);
     }
   };
 
@@ -467,7 +719,13 @@ export const PostsProvider = ({ children }) => {
     setPosts((prev) =>
       prev.map((post) => {
         if (post.id !== postId) return post;
-        return { ...post, comments: [...post.comments, optimisticComment] };
+        const baseCount =
+          typeof post.comments_count === 'number' ? post.comments_count : post.comments?.length || 0;
+        return {
+          ...post,
+          comments: [...post.comments, optimisticComment],
+          comments_count: baseCount + 1,
+        };
       }),
     );
 
@@ -478,16 +736,27 @@ export const PostsProvider = ({ children }) => {
       .single();
 
     if (error) {
-      console.error('addComment error:', error);
+      Alert.alert('Commento', 'Non siamo riusciti a pubblicare il commento. Riprova.');
       setPosts((prev) =>
         prev.map((post) => {
           if (post.id !== postId) return post;
-          return { ...post, comments: post.comments.filter((comment) => comment.id !== tempId) };
+          const baseCount =
+            typeof post.comments_count === 'number' ? post.comments_count : post.comments?.length || 0;
+          return {
+            ...post,
+            comments: post.comments.filter((comment) => comment.id !== tempId),
+            comments_count: Math.max(baseCount - 1, 0),
+          };
         }),
       );
       return;
     }
 
+    if (data?.id) {
+      const commentEventKey = `cmt:ins:${postId}:${data.id}`;
+      shouldApplyEvent(commentEventKey);
+      commentsCountUpdatedAtRef.current.set(postId, Date.now());
+    }
     setPosts((prev) =>
       prev.map((post) => {
         if (post.id !== postId) return post;
@@ -522,12 +791,13 @@ export const PostsProvider = ({ children }) => {
       deletePost,
       toggleLike,
       addComment,
+      isLikePending: (postId) => Boolean(likePending[postId]),
       feedError,
       loadingMore,
       hasMore,
       selfUser: { id: user?.id || 'self-user', name: 'Tu', initials: 'TU' },
     }),
-    [posts, user?.id, feedError, fetchPosts, loadingMore, hasMore],
+    [posts, user?.id, feedError, fetchPosts, loadingMore, hasMore, likePending],
   );
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>;

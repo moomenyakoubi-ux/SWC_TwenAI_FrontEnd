@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -12,296 +14,332 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import useSession from '../auth/useSession';
+import { supabase } from '../lib/supabase';
+import {
+  fetchMessages,
+  fetchParticipants,
+  fetchProfiles,
+  listConversations,
+  sendMessage,
+  subscribeToMessages,
+} from '../services/chatService';
 
 const backgroundImage = require('../images/image2.png');
 
-const ChatScreen = ({ navigation }) => {
+const getInitials = (value) =>
+  String(value || '')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+const formatTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const ChatScreen = ({ navigation, route }) => {
   const isWeb = Platform.OS === 'web';
   const { strings, isRTL } = useLanguage();
+  const { user } = useSession();
   const chatStrings = strings.chat;
   const menuStrings = strings.menu;
   const sidebarTitle = strings.home?.greeting || chatStrings.title;
   const [activeChatId, setActiveChatId] = useState(null);
-  const [conversations, setConversations] = useState({});
+  const [conversations, setConversations] = useState([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsError, setConversationsError] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [oldestMessageAt, setOldestMessageAt] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef(null);
-  const replyTimeoutRef = useRef(null);
+  const shouldScrollRef = useRef(true);
+  const typingTimeoutRef = useRef(null);
+  const presenceRef = useRef(null);
 
-  const chatProfiles = useMemo(() => {
-    const pinnedAiChat = {
-      id: 'ai',
-      name: 'TwensAi',
-      subtitle: chatStrings.aiTitle,
-      status: chatStrings.statusOnline,
-      lastMessage: chatStrings.initialMessages[chatStrings.initialMessages.length - 1]?.text,
-      color: '#D72323',
-      initialMessages: chatStrings.initialMessages,
-      autoReply: chatStrings.aiReply,
-      pinned: true,
-    };
-
-    const orderedChats = [
-      {
-        id: 'youssef',
-        name: 'Youssef Ben Ali',
-        subtitle: 'Milano · food & tech',
-        status: `${chatStrings.statusOffline} 10:20`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'y-1', sender: 'ai', text: 'Hey Youssef, hai trovato volontari per il pranzo tech?' },
-          { id: 'y-2', sender: 'user', text: 'Sto cercando un fotografo per l\'evento di domenica.' },
-          { id: 'y-3', sender: 'ai', text: 'Posso segnalarne due a Milano, vuoi i contatti?' },
-        ],
-        autoReply: 'Aggiungo altri contatti di fotografi e mentor per il meetup.',
-      },
-      {
-        id: 'amina',
-        name: 'Amina Trabelsi',
-        subtitle: 'Torino · arte & cultura',
-        status: `${chatStrings.statusOffline} 10:05`,
-        color: '#F2A365',
-        initialMessages: [
-          { id: 'am-1', sender: 'ai', text: 'Ciao Amina, come procede la mostra itinerante?' },
-          { id: 'am-2', sender: 'user', text: 'Sto cercando volontari bilingui per l\'allestimento.' },
-          { id: 'am-3', sender: 'ai', text: 'Ti invio una lista di studenti tunisini a Torino disponibili nel weekend.' },
-        ],
-        autoReply: 'Ti segnalo volontari bilingui e allestitori a Torino.',
-      },
-      {
-        id: 'luca',
-        name: 'Luca Kader',
-        subtitle: 'Roma · community & eventi',
-        status: `${chatStrings.statusOffline} 09:55`,
-        color: '#D72323',
-        initialMessages: [
-          { id: 'lk-1', sender: 'ai', text: 'Luca, il festival di teatro tunisino ha bisogno di sponsor?' },
-          { id: 'lk-2', sender: 'user', text: 'Sì, sto cercando due sponsor locali e un media partner.' },
-          { id: 'lk-3', sender: 'ai', text: 'Posso proporti contatti tra coworking e radio community a Roma.' },
-        ],
-        autoReply: 'Raccolgo sponsor e location disponibili per il festival a Roma.',
-      },
-      {
-        id: 'sara',
-        name: 'Sara Mahmoud',
-        subtitle: 'Bologna · startup & viaggi',
-        status: `${chatStrings.statusOffline} 09:40`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'sm-1', sender: 'ai', text: 'Ciao Sara, hai fissato il workshop di product discovery?' },
-          { id: 'sm-2', sender: 'user', text: 'Sto scegliendo la data, vorrei coinvolgere studenti tunisini.' },
-          { id: 'sm-3', sender: 'ai', text: 'Segnalo le community universitarie di Bologna per riempire la sala.' },
-        ],
-        autoReply: 'Posso invitare gruppi di studenti e startup tunisine interessate.',
-      },
-      {
-        id: 'kader',
-        name: 'Kader Ben Ali',
-        subtitle: 'Torino · cucina & viaggi',
-        status: `${chatStrings.statusOffline} 09:18`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'kb-1', sender: 'ai', text: 'Kader, come è andato il tour gastronomico di ieri?' },
-          { id: 'kb-2', sender: 'user', text: 'Grande! Ora voglio organizzare una cena harissa & vino.' },
-          { id: 'kb-3', sender: 'ai', text: 'Ti mando locali a Torino con cucina aperta fino a tardi.' },
-        ],
-        autoReply: 'Raccolgo ristoranti e contatti per la tua cena tunisina a Torino.',
-      },
-      {
-        id: 'meriem',
-        name: 'Meriem Azzabi',
-        subtitle: 'Genova · mare & cucina',
-        status: `${chatStrings.statusOffline} 08:50`,
-        color: '#D72323',
-        initialMessages: [
-          { id: 'ma-1', sender: 'ai', text: 'Hey Meriem, hai scelto il menu per il tour gastronomico?' },
-          { id: 'ma-2', sender: 'user', text: 'Sto pensando a cous cous di pesce con degustazione.' },
-          { id: 'ma-3', sender: 'ai', text: 'Ottimo, ti suggerisco due pescherie tunisine a Genova.' },
-        ],
-        autoReply: 'Aggiungo fornitori e location sul mare per il tuo laboratorio di cucina.',
-      },
-      {
-        id: 'karim',
-        name: 'Karim Laarbi',
-        subtitle: 'Napoli · musica & eventi',
-        status: `${chatStrings.statusOffline} 08:32`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'kl-1', sender: 'ai', text: 'Ciao Karim, serve supporto per la serata oud + elettronica?' },
-          { id: 'kl-2', sender: 'user', text: 'Mi manca un videomaker e qualcuno per il live streaming.' },
-          { id: 'kl-3', sender: 'ai', text: 'Posso invitare due creator tunisini a Napoli per il set.' },
-        ],
-        autoReply: 'Contatto videomaker e creator per promuovere la tua serata a Napoli.',
-      },
-      {
-        id: 'rania',
-        name: 'Rania Jemai',
-        subtitle: 'Padova · startup & mentoring',
-        status: `${chatStrings.statusOffline} 08:20`,
-        color: '#F2A365',
-        initialMessages: [
-          { id: 'rj-1', sender: 'ai', text: 'Rania, hai già i team per il percorso di accelerazione?' },
-          { id: 'rj-2', sender: 'user', text: 'Sto valutando due startup italo-tunisine.' },
-          { id: 'rj-3', sender: 'ai', text: 'Posso presentarti mentor in fintech e travel da Padova.' },
-        ],
-        autoReply: 'Metto in contatto i team con mentor e investitori interessati.',
-      },
-      {
-        id: 'walid',
-        name: 'Walid Chouchane',
-        subtitle: 'Cagliari · mare & sport',
-        status: `${chatStrings.statusOffline} 08:05`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'wc-1', sender: 'ai', text: 'Hey Walid, pronti per il weekend di surf?' },
-          { id: 'wc-2', sender: 'user', text: 'Sì, ma mi servono alloggi per due famiglie tunisine.' },
-          { id: 'wc-3', sender: 'ai', text: 'Ti invio B&B e case vacanza vicine agli spot migliori.' },
-        ],
-        autoReply: 'Cerco alloggi family-friendly vicino agli spot di surf in Sardegna.',
-      },
-      {
-        id: 'omar',
-        name: 'Omar Tounsi',
-        subtitle: 'Trieste · logistica & viaggi',
-        status: `${chatStrings.statusOffline} 07:55`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'ot-1', sender: 'ai', text: 'Ciao Omar, hai aggiornato la guida alle tratte navali?' },
-          { id: 'ot-2', sender: 'user', text: 'Sto confrontando due compagnie per studenti.' },
-          { id: 'ot-3', sender: 'ai', text: 'Posso inviarti prezzi e orari aggiornati per Trieste ↔ Tunisi.' },
-        ],
-        autoReply: 'Raccolgo tariffe studentesche e link per prenotare rapidamente.',
-      },
-      {
-        id: 'leila',
-        name: 'Leila Ben Amor',
-        subtitle: 'Lecce · cibo & storytelling',
-        status: `${chatStrings.statusOffline} 07:40`,
-        color: '#F2A365',
-        initialMessages: [
-          { id: 'lba-1', sender: 'ai', text: 'Leila, hai pubblicato la ricetta della harissa con frisella?' },
-          { id: 'lba-2', sender: 'user', text: 'Quasi, sto cercando foto e un video breve.' },
-          { id: 'lba-3', sender: 'ai', text: 'Ti mando esempi e un template per il reel.' },
-        ],
-        autoReply: 'Preparo idee e template per raccontare la tua ricetta salentina-tunisina.',
-      },
-      {
-        id: 'adel',
-        name: 'Adel Fradi',
-        subtitle: 'Bari · porti & scambi',
-        status: `${chatStrings.statusOffline} 07:25`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'af-1', sender: 'ai', text: 'Ciao Adel, come procede il meetup tra operatori portuali?' },
-          { id: 'af-2', sender: 'user', text: 'Mi servono badge e lista invitati aggiornata.' },
-          { id: 'af-3', sender: 'ai', text: 'Aggiorno la lista e preparo un reminder via email.' },
-        ],
-        autoReply: 'Organizzo reminder e badge per il meetup logistico a Bari.',
-      },
-      {
-        id: 'majdi',
-        name: 'Majdi Ayari',
-        subtitle: 'Ancona · traghetti & viaggi',
-        status: `${chatStrings.statusOffline} 07:10`,
-        color: '#0C1B33',
-        initialMessages: [
-          { id: 'mj-1', sender: 'ai', text: 'Majdi, hai aggiornato le offerte per Ancona-Tunisi?' },
-          { id: 'mj-2', sender: 'user', text: 'Sto cercando cabine family disponibili a luglio.' },
-          { id: 'mj-3', sender: 'ai', text: 'Controllo gli operatori con cabine familiari e ti mando i link.' },
-        ],
-        autoReply: 'Ti giro le migliori offerte di cabine family sulla tratta Ancona ↔ Tunisi.',
-      },
-      {
-        id: 'hana',
-        name: 'Hana Ben Said',
-        subtitle: 'Bergamo · eventi & community',
-        status: `${chatStrings.statusOffline} 06:55`,
-        color: '#F2A365',
-        initialMessages: [
-          { id: 'hb-1', sender: 'ai', text: 'Hana, hai trovato la location per l\'aperitivo culturale?' },
-          { id: 'hb-2', sender: 'user', text: 'Ho due opzioni ma vorrei musica dal vivo.' },
-          { id: 'hb-3', sender: 'ai', text: 'Posso suggerire un duo acustico tunisino di Bergamo.' },
-        ],
-        autoReply: 'Cerco location e musica live per il tuo aperitivo culturale a Bergamo.',
-      },
-    ];
-
-    return [pinnedAiChat, ...orderedChats];
-  }, [chatStrings]);
+  const conversationIdParam = route?.params?.conversationId;
 
   useEffect(() => {
-    const initialState = chatProfiles.reduce((acc, chat) => {
-      acc[chat.id] = chat.initialMessages;
-      return acc;
-    }, {});
-    setConversations(initialState);
-    setIsTyping(false);
-    setActiveChatId(null);
-    if (replyTimeoutRef.current) {
-      clearTimeout(replyTimeoutRef.current);
-      replyTimeoutRef.current = null;
+    if (conversationIdParam) {
+      setActiveChatId(conversationIdParam);
     }
-  }, [chatProfiles]);
+  }, [conversationIdParam]);
+
+  const loadConversations = useCallback(async () => {
+    if (!user?.id) return;
+    setConversationsLoading(true);
+    setConversationsError(null);
+    try {
+      const list = await listConversations(user.id);
+      const ids = list.map((item) => item.id).filter(Boolean);
+      const participantsMap = await fetchParticipants(ids, user.id);
+      const otherUserIds = Array.from(
+        new Set(Object.values(participantsMap).filter(Boolean)),
+      );
+      const profilesMap = await fetchProfiles(otherUserIds);
+      const mapped = list.map((item) => {
+        const otherUserId = participantsMap[item.id];
+        const profile = profilesMap[otherUserId] || {};
+        return {
+          id: item.id,
+          lastMessageText: item.last_message_text || '',
+          lastMessageAt: item.last_message_at,
+          otherUserId,
+          name: profile.full_name || 'Utente',
+          avatarUrl: profile.avatar_url || null,
+        };
+      });
+      setConversations(mapped);
+    } catch (err) {
+      setConversationsError(err);
+      setConversations([]);
+    } finally {
+      setConversationsLoading(false);
+    }
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations]),
+  );
+
+  const activeChat = useMemo(
+    () => conversations.find((chat) => chat.id === activeChatId),
+    [activeChatId, conversations],
+  );
+
+  const updateConversationPreview = useCallback((message, conversationId) => {
+    if (!message || !conversationId) return;
+    setConversations((prev) => {
+      const updated = prev.map((chat) =>
+        chat.id === conversationId
+          ? {
+              ...chat,
+              lastMessageText: message.body || chat.lastMessageText,
+              lastMessageAt: message.created_at || chat.lastMessageAt,
+            }
+          : chat,
+      );
+      return updated.slice().sort((a, b) => {
+        const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return bTime - aTime;
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId || !user?.id) return;
+    let isMounted = true;
+    setMessagesLoading(true);
+    setMessagesError(null);
+    setMessages([]);
+    setHasMoreMessages(true);
+    setOldestMessageAt(null);
+    setInput('');
+    shouldScrollRef.current = true;
+
+    const load = async () => {
+      try {
+        const fetched = await fetchMessages(activeChatId, 30);
+        if (!isMounted) return;
+        setMessages(fetched);
+        setHasMoreMessages(fetched.length === 30);
+        setOldestMessageAt(fetched[0]?.created_at || null);
+      } catch (err) {
+        if (isMounted) {
+          setMessagesError(err);
+          setMessages([]);
+          setHasMoreMessages(false);
+          setOldestMessageAt(null);
+        }
+      } finally {
+        if (isMounted) {
+          setMessagesLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeChatId, user?.id]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    const unsubscribe = subscribeToMessages(activeChatId, (newMessage) => {
+      if (!newMessage?.id) return;
+      setMessages((prev) => {
+        if (prev.some((msg) => msg.id === newMessage.id)) return prev;
+        return [...prev, newMessage].sort((a, b) => {
+          const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return aTime - bTime;
+        });
+      });
+      updateConversationPreview(newMessage, activeChatId);
+    });
+    return unsubscribe;
+  }, [activeChatId, updateConversationPreview]);
+
+  useEffect(() => {
+    if (!activeChatId || !user?.id) return;
+    const presence = supabase.channel(`presence:${activeChatId}`, {
+      config: { presence: { key: user.id } },
+    });
+    presenceRef.current = presence;
+
+    presence.on('presence', { event: 'sync' }, () => {
+      const state = presence.presenceState();
+      const otherKeys = Object.keys(state).filter((key) => key !== user.id);
+      const someoneTyping = otherKeys.some((key) =>
+        (state[key] || []).some((entry) => Boolean(entry?.typing)),
+      );
+      setOtherTyping(someoneTyping);
+    });
+
+    presence.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        presence.track({ typing: false, ts: Date.now() });
+      }
+    });
+
+    return () => {
+      presence.track({ typing: false, ts: Date.now() });
+      supabase.removeChannel(presence);
+      presenceRef.current = null;
+      setOtherTyping(false);
+    };
+  }, [activeChatId, user?.id]);
 
   useEffect(
     () => () => {
-      if (replyTimeoutRef.current) {
-        clearTimeout(replyTimeoutRef.current);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
       }
     },
     [],
   );
 
+  useEffect(() => {
+    if (!shouldScrollRef.current) return;
+    if (messages.length === 0) return;
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages]);
+
   const handleOpenChat = (chatId) => {
     setActiveChatId(chatId);
-    setIsTyping(false);
-    setInput('');
-    if (replyTimeoutRef.current) {
-      clearTimeout(replyTimeoutRef.current);
-      replyTimeoutRef.current = null;
-    }
   };
 
-  const handleSend = (overrideText) => {
-    if (!activeChatId) return;
+  const handleSend = async (overrideText) => {
+    if (!activeChatId || !user?.id) return;
     const textToSend = (overrideText ?? input).trim();
-    if (!textToSend) return;
-    const newMessage = { id: `${activeChatId}-${Date.now()}`, sender: 'user', text: textToSend };
-    const activeChat = chatProfiles.find((chat) => chat.id === activeChatId);
-    const autoReply = { id: `reply-${Date.now()}`, sender: 'ai', text: activeChat?.autoReply };
-
-    setConversations((prev) => ({
-      ...prev,
-      [activeChatId]: [...(prev[activeChatId] || []), newMessage],
-    }));
-    setInput('');
-    setIsTyping(true);
-
-    if (replyTimeoutRef.current) {
-      clearTimeout(replyTimeoutRef.current);
-    }
-
-    replyTimeoutRef.current = setTimeout(() => {
-      if (!activeChat?.autoReply) {
-        setIsTyping(false);
-        replyTimeoutRef.current = null;
-        return;
+    if (!textToSend || sending) return;
+    setSending(true);
+    shouldScrollRef.current = true;
+    try {
+      const message = await sendMessage(activeChatId, textToSend, user.id);
+      if (message) {
+        setMessages((prev) => {
+          if (prev.some((msg) => msg.id === message.id)) return prev;
+          return [...prev, message].sort((a, b) => {
+            const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return aTime - bTime;
+          });
+        });
+        updateConversationPreview(message, activeChatId);
       }
-      setConversations((prev) => ({
-        ...prev,
-        [activeChatId]: [...(prev[activeChatId] || []), autoReply],
-      }));
-      setIsTyping(false);
-      replyTimeoutRef.current = null;
-    }, activeChatId === 'ai' ? 1300 : 900);
+      setInput('');
+      presenceRef.current?.track({ typing: false, ts: Date.now() });
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    } catch (err) {
+      setMessagesError(err);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const TypingIndicator = () => {
+  const handleSubmitEditing = ({ nativeEvent }) => {
+    handleSend(nativeEvent?.text);
+  };
+
+  const handleInputChange = (value) => {
+    setInput(value);
+    if (!activeChatId || !user?.id) return;
+    presenceRef.current?.track({ typing: true, ts: Date.now() });
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      presenceRef.current?.track({ typing: false, ts: Date.now() });
+    }, 1000);
+  };
+
+  const handleLoadOlder = async () => {
+    if (!activeChatId || !hasMoreMessages || loadingOlder) return;
+    setLoadingOlder(true);
+    shouldScrollRef.current = false;
+    try {
+      const older = await fetchMessages(activeChatId, 30, oldestMessageAt);
+      if (older.length) {
+        setMessages((prev) => [...older, ...prev]);
+        setOldestMessageAt(older[0]?.created_at || oldestMessageAt);
+      }
+      setHasMoreMessages(older.length === 30);
+    } catch (err) {
+      setMessagesError(err);
+    } finally {
+      setLoadingOlder(false);
+      shouldScrollRef.current = true;
+    }
+  };
+
+  const renderBubble = (message) => {
+    const isUser = message.sender_id ? message.sender_id === user?.id : message.sender === 'user';
+    const body = message.body ?? message.text ?? '';
+    return (
+      <View key={message.id} style={[styles.bubbleWrapper, isUser ? styles.alignEnd : styles.alignStart]}>
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAi]}>
+          <Text
+            style={[
+              styles.bubbleText,
+              isUser ? styles.userText : styles.aiText,
+              isRTL && styles.rtlText,
+            ]}
+          >
+            {body}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const TypingDots = () => {
     const dotScales = useRef([0, 1, 2].map(() => new Animated.Value(0.4))).current;
 
     useEffect(() => {
@@ -336,65 +374,55 @@ const ChatScreen = ({ navigation }) => {
     );
   };
 
-  const renderBubble = (message) => {
-    const isUser = message.sender === 'user';
-    return (
-      <View key={message.id} style={[styles.bubbleWrapper, isUser ? styles.alignEnd : styles.alignStart]}>
-        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAi]}>
-          <Text
-            style={[
-              styles.bubbleText,
-              isUser ? styles.userText : styles.aiText,
-              isRTL && styles.rtlText,
-            ]}
-          >
-            {message.text}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  const handleSubmitEditing = ({ nativeEvent }) => {
-    handleSend(nativeEvent?.text);
-  };
-
-  const activeChat = chatProfiles.find((chat) => chat.id === activeChatId);
-  const currentMessages = activeChatId ? conversations[activeChatId] || [] : [];
-
   const ChatList = () => (
     <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
       <Text style={[styles.listTitle, isRTL && styles.rtlText]}>{chatStrings.listTitle}</Text>
+      {conversationsLoading ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={theme.colors.card} />
+          <Text style={[styles.listMuted, isRTL && styles.rtlText]}>Caricamento chat...</Text>
+        </View>
+      ) : null}
+      {conversationsError ? (
+        <Text style={[styles.errorText, isRTL && styles.rtlText]}>{conversationsError.message}</Text>
+      ) : null}
+      {!conversationsLoading && conversations.length === 0 ? (
+        <Text style={[styles.listMuted, isRTL && styles.rtlText]}>Nessuna chat ancora.</Text>
+      ) : null}
       <ScrollView contentContainerStyle={styles.chatList} showsVerticalScrollIndicator={false}>
-        {chatProfiles.map((chat) => {
-          const lastMessage = (conversations[chat.id] || chat.initialMessages).slice(-1)[0];
-          return (
-            <TouchableOpacity
-              key={chat.id}
-              style={styles.chatCard}
-              activeOpacity={0.9}
-              onPress={() => handleOpenChat(chat.id)}
-            >
-              <View style={[styles.avatar, { backgroundColor: chat.color }]}>
-                <Text style={styles.avatarText}>{chat.name.slice(0, 2).toUpperCase()}</Text>
-              </View>
-              <View style={styles.chatMeta}>
-                <View style={[styles.chatHeader, isRTL && styles.rowReverse]}>
-                  <Text style={[styles.chatName, isRTL && styles.rtlText]}>{chat.name}</Text>
-                  <Text style={styles.chatStatus}>{chat.status}</Text>
+        {conversations.map((chat) => (
+          <TouchableOpacity
+            key={chat.id}
+            style={styles.chatCard}
+            activeOpacity={0.9}
+            onPress={() => handleOpenChat(chat.id)}
+          >
+            <View style={styles.avatar}>
+              {chat.avatarUrl ? (
+                <Image source={{ uri: chat.avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <View style={[styles.avatarFallback, { backgroundColor: theme.colors.secondary }]}
+                >
+                  <Text style={styles.avatarText}>{getInitials(chat.name)}</Text>
                 </View>
-                <Text style={[styles.chatSubtitle, isRTL && styles.rtlText]}>{chat.subtitle}</Text>
-                <Text numberOfLines={1} style={[styles.chatLast, isRTL && styles.rtlText]}>
-                  {lastMessage?.text}
-                </Text>
+              )}
+            </View>
+            <View style={styles.chatMeta}>
+              <View style={[styles.chatHeader, isRTL && styles.rowReverse]}>
+                <Text style={[styles.chatName, isRTL && styles.rtlText]}>{chat.name}</Text>
+                <Text style={styles.chatStatus}>{formatTime(chat.lastMessageAt)}</Text>
               </View>
-              <View style={styles.openPill}>
-                <Ionicons name="arrow-forward" size={18} color={theme.colors.card} />
-                <Text style={styles.openPillText}>{chatStrings.openChat}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+              <Text style={[styles.chatSubtitle, isRTL && styles.rtlText]}>{chatStrings.statusOffline}</Text>
+              <Text numberOfLines={1} style={[styles.chatLast, isRTL && styles.rtlText]}>
+                {chat.lastMessageText}
+              </Text>
+            </View>
+            <View style={styles.openPill}>
+              <Ionicons name="arrow-forward" size={18} color={theme.colors.card} />
+              <Text style={styles.openPillText}>{chatStrings.openChat}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
     </View>
   );
@@ -423,49 +451,88 @@ const ChatScreen = ({ navigation }) => {
           >
             <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
               <View style={[styles.chatHero, isRTL && styles.rowReverse]}>
-                <View style={[styles.avatarLarge, { backgroundColor: activeChat.color }]}>
-                  <Text style={styles.avatarLargeText}>{activeChat.name.slice(0, 2).toUpperCase()}</Text>
+                <View style={styles.avatarLarge}>
+                  {activeChat.avatarUrl ? (
+                    <Image source={{ uri: activeChat.avatarUrl }} style={styles.avatarLargeImage} />
+                  ) : (
+                    <View style={[styles.avatarLargeFallback, { backgroundColor: theme.colors.secondary }]}
+                    >
+                      <Text style={styles.avatarLargeText}>{getInitials(activeChat.name)}</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.heroMeta}>
-                  <Text style={[styles.heroTitle, isRTL && styles.rtlText]}>{activeChat.subtitle}</Text>
-                  <Text style={[styles.heroStatus, isRTL && styles.rtlText]}>{activeChat.status}</Text>
+                  <Text style={[styles.heroTitle, isRTL && styles.rtlText]}>{activeChat.name}</Text>
+                  <Text style={[styles.heroStatus, isRTL && styles.rtlText]}>
+                    {activeChat.lastMessageAt
+                      ? `${chatStrings.statusOffline} ${formatTime(activeChat.lastMessageAt)}`
+                      : chatStrings.statusOffline}
+                  </Text>
                 </View>
               </View>
+
+              {messagesError ? (
+                <Text style={[styles.errorText, isRTL && styles.rtlText]}>{messagesError.message}</Text>
+              ) : null}
 
               <ScrollView
                 ref={scrollRef}
                 contentContainerStyle={styles.messages}
-                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
                 showsVerticalScrollIndicator={false}
               >
-                {currentMessages.map(renderBubble)}
-                {isTyping && (
-                  <View style={[styles.bubbleWrapper, styles.alignStart]}>
-                    <View style={[styles.bubble, styles.bubbleAi, styles.typingBubble]}>
-                      <TypingIndicator />
-                      <Text style={[styles.typingLabel, isRTL && styles.rtlText]}>{chatStrings.typing}</Text>
-                    </View>
+                {hasMoreMessages ? (
+                  <TouchableOpacity
+                    style={[styles.loadMoreButton, loadingOlder && styles.loadMoreButtonDisabled]}
+                    onPress={handleLoadOlder}
+                    disabled={loadingOlder}
+                  >
+                    {loadingOlder ? (
+                      <ActivityIndicator size="small" color={theme.colors.card} />
+                    ) : (
+                      <Text style={styles.loadMoreText}>Carica messaggi precedenti</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+                {messagesLoading && messages.length === 0 ? (
+                  <View style={styles.loadingRow}>
+                    <ActivityIndicator size="small" color={theme.colors.card} />
+                    <Text style={[styles.listMuted, isRTL && styles.rtlText]}>Caricamento messaggi...</Text>
                   </View>
-                )}
+                ) : null}
+                {!messagesLoading && messages.length === 0 ? (
+                  <Text style={[styles.listMuted, isRTL && styles.rtlText]}>Nessun messaggio ancora.</Text>
+                ) : null}
+                {messages.map(renderBubble)}
               </ScrollView>
+              {otherTyping ? (
+                <View style={[styles.typingRow, isRTL && styles.rowReverse]}>
+                  <TypingDots />
+                  <Text style={[styles.typingLabel, isRTL && styles.rtlText]}>Typing...</Text>
+                </View>
+              ) : null}
               <View style={styles.inputRow}>
                 <View style={[styles.inputRowInner, isWeb && styles.inputRowWeb]}>
-                <TextInput
-                  style={styles.input}
-                  value={input}
-                  onChangeText={setInput}
-                  placeholder={chatStrings.placeholder}
-                  placeholderTextColor={theme.colors.muted}
-                  multiline
-                  returnKeyType="send"
-                  blurOnSubmit={false}
-                  onSubmitEditing={handleSubmitEditing}
-                  textAlign={isRTL ? 'right' : 'left'}
-                  writingDirection={isRTL ? 'rtl' : 'ltr'}
-                />
-                <TouchableOpacity style={styles.sendButton} onPress={() => handleSend()}>
-                  <Ionicons name="send" size={20} color={theme.colors.card} />
-                </TouchableOpacity>
+                  <TextInput
+                    style={styles.input}
+                    value={input}
+                    onChangeText={handleInputChange}
+                    placeholder={chatStrings.placeholder}
+                    placeholderTextColor={theme.colors.muted}
+                    multiline
+                    returnKeyType="send"
+                    blurOnSubmit={false}
+                    onSubmitEditing={handleSubmitEditing}
+                    textAlign={isRTL ? 'right' : 'left'}
+                    writingDirection={isRTL ? 'rtl' : 'ltr'}
+                  />
+                  <TouchableOpacity style={styles.sendButton} onPress={() => handleSend()} disabled={sending}
+                  >
+                    {sending ? (
+                      <ActivityIndicator size="small" color={theme.colors.card} />
+                    ) : (
+                      <Ionicons name="send" size={20} color={theme.colors.card} />
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -504,6 +571,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.lg,
+    gap: theme.spacing.sm,
   },
   webMaxWidth: {
     width: '100%',
@@ -515,6 +583,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     marginBottom: theme.spacing.md,
+  },
+  listMuted: {
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '600',
   },
   chatList: {
     gap: theme.spacing.md,
@@ -534,8 +606,19 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     color: theme.colors.card,
@@ -601,6 +684,17 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLargeImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarLargeFallback: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -657,27 +751,6 @@ const styles = StyleSheet.create({
   aiText: {
     color: theme.colors.secondary,
   },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  typingLabel: {
-    color: theme.colors.secondary,
-    fontSize: 13,
-    marginLeft: theme.spacing.xs,
-  },
-  typingDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: theme.spacing.xs,
-  },
-  typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.secondary,
-    marginHorizontal: 2,
-  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -708,6 +781,53 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.secondary,
     borderRadius: theme.radius.sm,
     padding: theme.spacing.sm,
+  },
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  typingLabel: {
+    color: theme.colors.card,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  typingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.card,
+    marginHorizontal: 2,
+  },
+  loadMoreButton: {
+    alignSelf: 'center',
+    marginBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  loadMoreButtonDisabled: {
+    opacity: 0.7,
+  },
+  loadMoreText: {
+    color: theme.colors.card,
+    fontWeight: '700',
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  errorText: {
+    color: theme.colors.primary,
+    fontWeight: '700',
   },
   rowReverse: {
     flexDirection: 'row-reverse',

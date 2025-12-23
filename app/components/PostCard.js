@@ -18,18 +18,14 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   );
   const authorAvatarUrl = post.authorAvatarUrl || null;
 
-  const { toggleLike, addComment, selfUser, updatePost, deletePost } = usePosts();
+  const { toggleLike, addComment, selfUser, updatePost, deletePost, isLikePending } = usePosts();
   const isOwner = post.authorId && post.authorId === selfUser.id;
 
-  const initialLiked = useMemo(
+  const liked = useMemo(
     () => post.likes?.some((user) => user.userId === selfUser.id),
     [post.likes, selfUser.id],
   );
-
-  const [liked, setLiked] = useState(initialLiked);
-  useEffect(() => {
-    setLiked(initialLiked);
-  }, [initialLiked]);
+  const likePending = isLikePending?.(post.id);
 
   const [showComments, setShowComments] = useState(false);
   const [showLikes, setShowLikes] = useState(false);
@@ -161,9 +157,10 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => {
-            setLiked((prev) => !prev);
+            if (likePending) return;
             toggleLike(post.id);
           }}
+          disabled={likePending}
         >
           <Ionicons
             name={liked ? 'heart' : 'heart-outline'}
