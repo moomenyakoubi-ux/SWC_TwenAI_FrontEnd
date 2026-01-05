@@ -22,6 +22,7 @@ import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import useSession from '../auth/useSession';
 import { supabase } from '../lib/supabase';
+import { askAI } from '../api/ai';
 import {
   fetchMessages,
   fetchParticipants,
@@ -50,6 +51,45 @@ const formatTime = (value) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const TWENSAI_CHAT_ID = 'twensai_ai';
+
+const ChatComposer = React.memo(
+  ({
+    value,
+    onChangeText,
+    onSubmit,
+    placeholder,
+    isRTL,
+    sending,
+    isWeb,
+  }) => (
+    <View style={styles.inputRow}>
+      <View style={[styles.inputRowInner, isWeb && styles.inputRowWeb]}>
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.muted}
+          multiline
+          returnKeyType="send"
+          blurOnSubmit={false}
+          onSubmitEditing={onSubmit}
+          textAlign={isRTL ? 'right' : 'left'}
+          writingDirection={isRTL ? 'rtl' : 'ltr'}
+        />
+        <TouchableOpacity style={styles.sendButton} onPress={onSubmit} disabled={sending}>
+          {sending ? (
+            <ActivityIndicator size="small" color={theme.colors.card} />
+          ) : (
+            <Ionicons name="send" size={20} color={theme.colors.card} />
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  ),
+);
+
 const ChatScreen = ({ navigation, route }) => {
   const isWeb = Platform.OS === 'web';
   const { strings, isRTL } = useLanguage();
@@ -70,12 +110,18 @@ const ChatScreen = ({ navigation, route }) => {
   const [otherTyping, setOtherTyping] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiSending, setAiSending] = useState(false);
   const scrollRef = useRef(null);
+  const aiScrollRef = useRef(null);
   const shouldScrollRef = useRef(true);
   const typingTimeoutRef = useRef(null);
   const presenceRef = useRef(null);
 
   const conversationIdParam = route?.params?.conversationId;
+  const isAiMode = activeChatId === TWENSAI_CHAT_ID;
+  const aiRtl = isRTL;
 
   useEffect(() => {
     if (conversationIdParam) {
@@ -122,10 +168,28 @@ const ChatScreen = ({ navigation, route }) => {
     }, [loadConversations]),
   );
 
-  const activeChat = useMemo(
-    () => conversations.find((chat) => chat.id === activeChatId),
-    [activeChatId, conversations],
+  const twensAiPreview = useMemo(() => {
+    const lastMessage = aiMessages[aiMessages.length - 1];
+    if (!lastMessage) return 'Chiedimi qualsiasi cosa';
+    return lastMessage.text || 'Chiedimi qualsiasi cosa';
+  }, [aiMessages]);
+
+  const twensAiChat = useMemo(
+    () => ({
+      id: TWENSAI_CHAT_ID,
+      lastMessageText: twensAiPreview,
+      lastMessageAt: null,
+      otherUserId: null,
+      name: 'TwensAI',
+      avatarUrl: null,
+    }),
+    [twensAiPreview],
   );
+
+  const activeChat = useMemo(() => {
+    if (activeChatId === TWENSAI_CHAT_ID) return twensAiChat;
+    return conversations.find((chat) => chat.id === activeChatId);
+  }, [activeChatId, conversations, twensAiChat]);
 
   const updateConversationPreview = useCallback((message, conversationId) => {
     if (!message || !conversationId) return;
@@ -148,7 +212,7 @@ const ChatScreen = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
-    if (!activeChatId || !user?.id) return;
+    if (!activeChatId || !user?.id || activeChatId === TWENSAI_CHAT_ID) return;
     let isMounted = true;
     setMessagesLoading(true);
     setMessagesError(null);
@@ -187,7 +251,7 @@ const ChatScreen = ({ navigation, route }) => {
   }, [activeChatId, user?.id]);
 
   useEffect(() => {
-    if (!activeChatId) return;
+    if (!activeChatId || activeChatId === TWENSAI_CHAT_ID) return;
     const unsubscribe = subscribeToMessages(activeChatId, (newMessage) => {
       if (!newMessage?.id) return;
       setMessages((prev) => {
@@ -204,7 +268,7 @@ const ChatScreen = ({ navigation, route }) => {
   }, [activeChatId, updateConversationPreview]);
 
   useEffect(() => {
-    if (!activeChatId || !user?.id) return;
+    if (!activeChatId || !user?.id || activeChatId === TWENSAI_CHAT_ID) return;
     const presence = supabase.channel(`presence:${activeChatId}`, {
       config: { presence: { key: user.id } },
     });
@@ -248,12 +312,17 @@ const ChatScreen = ({ navigation, route }) => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
 
+  useEffect(() => {
+    if (aiMessages.length === 0) return;
+    aiScrollRef.current?.scrollToEnd({ animated: true });
+  }, [aiMessages]);
+
   const handleOpenChat = (chatId) => {
     setActiveChatId(chatId);
   };
 
   const handleSend = async (overrideText) => {
-    if (!activeChatId || !user?.id) return;
+    if (!activeChatId || !user?.id || activeChatId === TWENSAI_CHAT_ID) return;
     const textToSend = (overrideText ?? input).trim();
     if (!textToSend || sending) return;
     setSending(true);
@@ -284,21 +353,75 @@ const ChatScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleSubmitEditing = ({ nativeEvent }) => {
-    handleSend(nativeEvent?.text);
+  const handleInputChange = useCallback(
+    (value) => {
+      setInput(value);
+      if (!activeChatId || !user?.id || activeChatId === TWENSAI_CHAT_ID) return;
+      presenceRef.current?.track({ typing: true, ts: Date.now() });
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => {
+        presenceRef.current?.track({ typing: false, ts: Date.now() });
+      }, 1000);
+    },
+    [activeChatId, user?.id],
+  );
+
+  const handleAiSend = async (overrideText) => {
+    const textToSend = (overrideText ?? aiInput).trim();
+    if (!textToSend || aiSending) return;
+    setAiSending(true);
+    const timestamp = new Date().toISOString();
+    const userMessage = {
+      id: `ai-user-${Date.now()}`,
+      role: 'user',
+      text: textToSend,
+      createdAt: timestamp,
+    };
+    const placeholderId = `ai-assistant-${Date.now()}`;
+    const placeholder = {
+      id: placeholderId,
+      role: 'assistant',
+      text: chatStrings.aiTyping || 'Sto scrivendo...',
+      createdAt: timestamp,
+      meta: { loading: true },
+    };
+    setAiMessages((prev) => [...prev, userMessage, placeholder]);
+    setAiInput('');
+
+    try {
+      const data = await askAI(textToSend);
+      const assistantMessage = {
+        id: placeholderId,
+        role: 'assistant',
+        text: data?.answer || '',
+        createdAt: new Date().toISOString(),
+        meta: {
+          intent: data?.intent,
+          sources: data?.sources || [],
+          showSources: data?.show_sources === true,
+        },
+      };
+      setAiMessages((prev) => prev.map((msg) => (msg.id === placeholderId ? assistantMessage : msg)));
+    } catch (err) {
+      const errorMessage = {
+        id: placeholderId,
+        role: 'assistant',
+        text:
+          chatStrings.aiError ||
+          'Errore: AI non disponibile in questo momento.',
+        createdAt: new Date().toISOString(),
+      };
+      setAiMessages((prev) => prev.map((msg) => (msg.id === placeholderId ? errorMessage : msg)));
+    } finally {
+      setAiSending(false);
+    }
   };
 
-  const handleInputChange = (value) => {
-    setInput(value);
-    if (!activeChatId || !user?.id) return;
-    presenceRef.current?.track({ typing: true, ts: Date.now() });
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    typingTimeoutRef.current = setTimeout(() => {
-      presenceRef.current?.track({ typing: false, ts: Date.now() });
-    }, 1000);
-  };
+  const handleAiInputChange = useCallback((value) => {
+    setAiInput(value);
+  }, []);
 
   const handleLoadOlder = async () => {
     if (!activeChatId || !hasMoreMessages || loadingOlder) return;
@@ -339,6 +462,46 @@ const ChatScreen = ({ navigation, route }) => {
     );
   };
 
+  const renderAiBubble = (message) => {
+    const isUser = message.role === 'user';
+    const body = message.text ?? '';
+    const showDebug = __DEV__ && !isUser && message.meta;
+    const sources = message.meta?.sources || [];
+    const shouldShowSources = message.meta?.showSources === true && sources.length > 0;
+    return (
+      <View
+        key={message.id}
+        style={[
+          styles.bubbleStack,
+          isUser ? styles.bubbleStackEnd : styles.bubbleStackStart,
+        ]}
+      >
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAi]}>
+          <Text
+            style={[
+              styles.bubbleText,
+              isUser ? styles.userText : styles.aiText,
+              aiRtl && styles.rtlText,
+            ]}
+          >
+            {body}
+          </Text>
+        </View>
+        {showDebug && shouldShowSources ? (
+          <View style={styles.debugCard}>
+            <Text style={styles.debugTitle}>{chatStrings.debugSourcesLabel || 'Fonti usate'}:</Text>
+            {sources.map((source, index) => (
+              <Text key={`${message.id}-source-${index}`} style={styles.debugItem}>
+                {source?.title || 'Senza titolo'} ({Number(source?.similarity || 0).toFixed(2)})
+                {source?.source ? ` · ${source.source}` : ''}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   const TypingDots = () => {
     const dotScales = useRef([0, 1, 2].map(() => new Animated.Value(0.4))).current;
 
@@ -374,6 +537,11 @@ const ChatScreen = ({ navigation, route }) => {
     );
   };
 
+  const displayedChats = useMemo(
+    () => [twensAiChat, ...conversations.filter((chat) => chat.id !== TWENSAI_CHAT_ID)],
+    [conversations, twensAiChat],
+  );
+
   const ChatList = () => (
     <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
       <Text style={[styles.listTitle, isRTL && styles.rtlText]}>{chatStrings.listTitle}</Text>
@@ -386,11 +554,8 @@ const ChatScreen = ({ navigation, route }) => {
       {conversationsError ? (
         <Text style={[styles.errorText, isRTL && styles.rtlText]}>{conversationsError.message}</Text>
       ) : null}
-      {!conversationsLoading && conversations.length === 0 ? (
-        <Text style={[styles.listMuted, isRTL && styles.rtlText]}>Nessuna chat ancora.</Text>
-      ) : null}
       <ScrollView contentContainerStyle={styles.chatList} showsVerticalScrollIndicator={false}>
-        {conversations.map((chat) => (
+        {displayedChats.map((chat) => (
           <TouchableOpacity
             key={chat.id}
             style={styles.chatCard}
@@ -427,6 +592,39 @@ const ChatScreen = ({ navigation, route }) => {
     </View>
   );
 
+  const aiChatContent = (
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+      <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+        <ScrollView
+          ref={aiScrollRef}
+          contentContainerStyle={styles.messages}
+          showsVerticalScrollIndicator={false}
+        >
+          {aiMessages.length === 0 ? (
+            <Text style={[styles.listMuted, aiRtl && styles.rtlText]}>
+              {chatStrings.aiEmptyState || 'Inizia una conversazione con TwensAI.'}
+            </Text>
+          ) : null}
+          {aiMessages.map(renderAiBubble)}
+        </ScrollView>
+
+        <ChatComposer
+          value={aiInput}
+          onChangeText={handleAiInputChange}
+          onSubmit={() => handleAiSend()}
+          placeholder={chatStrings.placeholder}
+          isRTL={aiRtl}
+          sending={aiSending}
+          isWeb={isWeb}
+        />
+      </View>
+    </KeyboardAvoidingView>
+  );
+
   return (
     <ImageBackground
       source={backgroundImage}
@@ -436,14 +634,15 @@ const ChatScreen = ({ navigation, route }) => {
     >
       <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
         <Navbar
-          title={activeChat ? activeChat.name : chatStrings.title}
+          title={isAiMode ? chatStrings.aiTitle : activeChat ? activeChat.name : chatStrings.title}
           isRTL={isRTL}
           onBack={activeChat ? () => handleOpenChat(null) : undefined}
           backLabel={activeChat ? chatStrings.backToList : undefined}
         />
+
         {!activeChat && <ChatList />}
 
-        {activeChat && (
+        {activeChat && !isAiMode && (
           <KeyboardAvoidingView
             style={styles.flex}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -510,34 +709,19 @@ const ChatScreen = ({ navigation, route }) => {
                   <Text style={[styles.typingLabel, isRTL && styles.rtlText]}>Typing...</Text>
                 </View>
               ) : null}
-              <View style={styles.inputRow}>
-                <View style={[styles.inputRowInner, isWeb && styles.inputRowWeb]}>
-                  <TextInput
-                    style={styles.input}
-                    value={input}
-                    onChangeText={handleInputChange}
-                    placeholder={chatStrings.placeholder}
-                    placeholderTextColor={theme.colors.muted}
-                    multiline
-                    returnKeyType="send"
-                    blurOnSubmit={false}
-                    onSubmitEditing={handleSubmitEditing}
-                    textAlign={isRTL ? 'right' : 'left'}
-                    writingDirection={isRTL ? 'rtl' : 'ltr'}
-                  />
-                  <TouchableOpacity style={styles.sendButton} onPress={() => handleSend()} disabled={sending}
-                  >
-                    {sending ? (
-                      <ActivityIndicator size="small" color={theme.colors.card} />
-                    ) : (
-                      <Ionicons name="send" size={20} color={theme.colors.card} />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <ChatComposer
+                value={input}
+                onChangeText={handleInputChange}
+                onSubmit={() => handleSend()}
+                placeholder={chatStrings.placeholder}
+                isRTL={isRTL}
+                sending={sending}
+                isWeb={isWeb}
+              />
             </View>
           </KeyboardAvoidingView>
         )}
+        {isAiMode && aiChatContent}
         <WebSidebar
           title={sidebarTitle}
           menuStrings={menuStrings}
@@ -722,6 +906,16 @@ const styles = StyleSheet.create({
   bubbleWrapper: {
     flexDirection: 'row',
   },
+  bubbleStack: {
+    flexDirection: 'column',
+    maxWidth: '100%',
+  },
+  bubbleStackStart: {
+    alignItems: 'flex-start',
+  },
+  bubbleStackEnd: {
+    alignItems: 'flex-end',
+  },
   alignStart: {
     justifyContent: 'flex-start',
   },
@@ -828,6 +1022,29 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.primary,
     fontWeight: '700',
+  },
+  debugCard: {
+    marginTop: theme.spacing.xs,
+    padding: theme.spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  debugTitle: {
+    color: theme.colors.card,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  debugItem: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  debugMuted: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginTop: 4,
   },
   rowReverse: {
     flexDirection: 'row-reverse',

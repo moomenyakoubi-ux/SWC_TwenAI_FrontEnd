@@ -41,7 +41,12 @@ const translations = {
     chat: {
       title: 'Chat',
       listTitle: 'Chat recenti',
-      aiTitle: 'TwensAi · Assistente',
+      aiTitle: 'TwensAI',
+      aiTyping: 'Sto scrivendo...',
+      aiError: 'Errore: AI non disponibile in questo momento.',
+      aiEmptyState: 'Inizia una conversazione con TwensAI.',
+      debugSourcesLabel: 'Fonti usate',
+      debugNoSources: 'Nessuna fonte.',
       statusOnline: 'Online',
       statusOffline: 'Ultimo accesso',
       placeholder: 'Scrivi un messaggio...',
@@ -49,7 +54,7 @@ const translations = {
         {
           id: 'm-1',
           sender: 'ai',
-          text: 'Ciao! Sono TwensAi, ti aiuto con notizie, eventi e consigli sulla comunità tunisina in Italia.',
+          text: 'Ciao! Sono TwensAI, ti aiuto con notizie, eventi e consigli sulla comunità tunisina in Italia.',
         },
         {
           id: 'm-2',
@@ -62,7 +67,7 @@ const translations = {
           text: 'Prova "La Medina" in Viale Monza: cous cous, brik e musica dal vivo il venerdì.',
         },
       ],
-      aiReply: 'Grazie per il messaggio! Sono TwensAi e posso suggerirti festival, voli o eventi vicini.',
+      aiReply: 'Grazie per il messaggio! Sono TwensAI e posso suggerirti festival, voli o eventi vicini.',
       typing: 'Sta scrivendo...',
       openChat: 'Apri chat',
       backToList: 'Tutte le chat',
@@ -160,7 +165,12 @@ const translations = {
     chat: {
       title: 'المحادثات',
       listTitle: 'الدردشات الأخيرة',
-      aiTitle: 'TwensAi · المساعد',
+      aiTitle: 'TwensAI',
+      aiTyping: 'يكتب الآن...',
+      aiError: 'عذراً، لا يمكنني الرد الآن. حاول لاحقاً.',
+      aiEmptyState: 'ابدأ محادثة مع TwensAI.',
+      debugSourcesLabel: 'المصادر المستخدمة',
+      debugNoSources: 'لا توجد مصادر.',
       statusOnline: 'متصل',
       statusOffline: 'آخر ظهور',
       placeholder: 'اكتب رسالة...',
@@ -168,7 +178,7 @@ const translations = {
         {
           id: 'm-1',
           sender: 'ai',
-          text: 'مرحباً! أنا TwensAi هنا لأساعدك بالأخبار والفعاليات والنصائح للجالية التونسية في إيطاليا.',
+          text: 'مرحباً! أنا TwensAI هنا لأساعدك بالأخبار والفعاليات والنصائح للجالية التونسية في إيطاليا.',
         },
         {
           id: 'm-2',
@@ -181,7 +191,7 @@ const translations = {
           text: 'جرّب "المدينة" في فيالي مونزا: كسكسي وبريك وموسيقى حية مساء الجمعة.',
         },
       ],
-      aiReply: 'شكراً على رسالتك! أنا TwensAi وأستطيع اقتراح مهرجانات أو رحلات أو فعاليات قريبة.',
+      aiReply: 'شكراً على رسالتك! أنا TwensAI وأستطيع اقتراح مهرجانات أو رحلات أو فعاليات قريبة.',
       typing: 'يكتب الآن...',
       openChat: 'افتح المحادثة',
       backToList: 'كل الدردشات',
