@@ -33,6 +33,7 @@ import {
 } from '../services/chatService';
 
 const backgroundImage = require('../images/image2.png');
+const DOT_COLOR = '#333';
 
 const getInitials = (value) =>
   String(value || '')
@@ -92,7 +93,7 @@ const ChatComposer = React.memo(
 
 const ChatScreen = ({ navigation, route }) => {
   const isWeb = Platform.OS === 'web';
-  const { strings, isRTL } = useLanguage();
+  const { strings, isRTL, language } = useLanguage();
   const { user } = useSession();
   const chatStrings = strings.chat;
   const menuStrings = strings.menu;
@@ -391,7 +392,10 @@ const ChatScreen = ({ navigation, route }) => {
     setAiInput('');
 
     try {
-      const data = await askAI(textToSend);
+      const data = await askAI(textToSend, { lang: language });
+      if (__DEV__) {
+        console.log('[askAI] response intent', data?.intent);
+      }
       const assistantMessage = {
         id: placeholderId,
         role: 'assistant',
@@ -465,6 +469,7 @@ const ChatScreen = ({ navigation, route }) => {
   const renderAiBubble = (message) => {
     const isUser = message.role === 'user';
     const body = message.text ?? '';
+    const isLoading = message.meta?.loading === true;
     const showDebug = __DEV__ && !isUser && message.meta;
     const sources = message.meta?.sources || [];
     const shouldShowSources = message.meta?.showSources === true && sources.length > 0;
@@ -477,15 +482,19 @@ const ChatScreen = ({ navigation, route }) => {
         ]}
       >
         <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAi]}>
-          <Text
-            style={[
-              styles.bubbleText,
-              isUser ? styles.userText : styles.aiText,
-              aiRtl && styles.rtlText,
-            ]}
-          >
-            {body}
-          </Text>
+          {isLoading ? (
+            <TypingDots />
+          ) : (
+            <Text
+              style={[
+                styles.bubbleText,
+                isUser ? styles.userText : styles.aiText,
+                aiRtl && styles.rtlText,
+              ]}
+            >
+              {body}
+            </Text>
+          )}
         </View>
         {showDebug && shouldShowSources ? (
           <View style={styles.debugCard}>
@@ -996,7 +1005,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: theme.colors.card,
+    backgroundColor: DOT_COLOR,
     marginHorizontal: 2,
   },
   loadMoreButton: {

@@ -193,13 +193,19 @@ const MainApp = () => (
 
 const ProfileLanguageSync = () => {
   const { profile } = useProfile();
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, hasStoredLanguage } = useLanguage();
+  const hasSyncedLanguage = React.useRef(false);
 
   useEffect(() => {
     if (!profile?.language) return;
-    if (profile.language === language) return;
-    setLanguage(profile.language);
-  }, [language, profile?.language, setLanguage]);
+    if (hasStoredLanguage) return;
+    if (hasSyncedLanguage.current) return;
+    const normalizedProfileLanguage = String(profile.language).trim().toLowerCase();
+    if (!['it', 'ar'].includes(normalizedProfileLanguage)) return;
+    hasSyncedLanguage.current = true;
+    if (normalizedProfileLanguage === language) return;
+    setLanguage(normalizedProfileLanguage);
+  }, [hasStoredLanguage, language, profile?.language, setLanguage]);
 
   return null;
 };
