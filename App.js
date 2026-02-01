@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
 import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -29,6 +29,8 @@ import theme from './app/styles/theme';
 import WebTabBar from './app/components/WebTabBar';
 import WebSidebar from './app/components/WebSidebar';
 import AuthScreen from './app/screens/AuthScreen';
+import ForgotPasswordScreen from './app/screens/ForgotPasswordScreen';
+import UpdatePasswordScreen from './app/screens/UpdatePasswordScreen';
 import useSession from './app/auth/useSession';
 import useProfile from './app/profile/useProfile';
 import ErrorBoundary from './app/components/ErrorBoundary';
@@ -37,6 +39,23 @@ const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
 
 const Tab = createBottomTabNavigator();
+const AUTH_ROUTES = {
+  login: 'login',
+  forgot: 'forgot',
+  update: 'update',
+};
+
+const getAuthRouteFromPath = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return AUTH_ROUTES.login;
+  if (window.location.pathname === '/auth/update-password') return AUTH_ROUTES.update;
+  return AUTH_ROUTES.login;
+};
+
+const replaceAuthPath = (route) => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const nextPath = route === AUTH_ROUTES.update ? '/auth/update-password' : '/';
+  window.history.replaceState({}, '', nextPath);
+};
 
 const navigationTheme = {
   ...NavigationTheme,
@@ -191,6 +210,32 @@ const MainApp = () => (
   </NavigationContainer>
 );
 
+const AuthFlow = ({ session }) => {
+  const [route, setRoute] = useState(getAuthRouteFromPath);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
+    const handlePopState = () => setRoute(getAuthRouteFromPath());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = (nextRoute) => {
+    setRoute(nextRoute);
+    replaceAuthPath(nextRoute);
+  };
+
+  if (route === AUTH_ROUTES.update) {
+    return <UpdatePasswordScreen session={session} onBackToLogin={() => navigate(AUTH_ROUTES.login)} />;
+  }
+
+  if (route === AUTH_ROUTES.forgot) {
+    return <ForgotPasswordScreen onBackToLogin={() => navigate(AUTH_ROUTES.login)} />;
+  }
+
+  return <AuthScreen onForgotPassword={() => navigate(AUTH_ROUTES.forgot)} />;
+};
+
 const ProfileLanguageSync = () => {
   const { profile } = useProfile();
   const { language, setLanguage, hasStoredLanguage } = useLanguage();
@@ -211,7 +256,8 @@ const ProfileLanguageSync = () => {
 };
 
 const AppContent = () => {
-  const { user, loading } = useSession();
+  const { user, loading, session } = useSession();
+  const isUpdatePasswordPath = getAuthRouteFromPath() === AUTH_ROUTES.update;
 
   if (loading) {
     return (
@@ -221,8 +267,8 @@ const AppContent = () => {
     );
   }
 
-  if (!user) {
-    return <AuthScreen />;
+  if (!user || isUpdatePasswordPath) {
+    return <AuthFlow session={session} />;
   }
 
   return (

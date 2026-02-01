@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signIn, signUp } from '../auth/authApi';
 import theme from '../styles/theme';
 
-const AuthScreen = () => {
+const AuthScreen = ({ onForgotPassword }) => {
   const [mode, setMode] = useState('start');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -200,6 +200,15 @@ const AuthScreen = () => {
               <Text style={styles.primaryButtonText}>{mode === 'signup' ? 'Registrati' : 'Accedi'}</Text>
             )}
           </TouchableOpacity>
+          {mode === 'signin' ? (
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={onForgotPassword}
+              disabled={loading}
+            >
+              <Text style={styles.linkText}>Recupera password</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={[styles.secondaryButton, loading && styles.buttonDisabled]}
             onPress={() => enterMode(mode === 'signup' ? 'signin' : 'signup')}
@@ -321,6 +330,14 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: theme.colors.card,
+    fontWeight: '700',
+  },
+  linkButton: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  linkText: {
+    color: theme.colors.secondary,
     fontWeight: '700',
   },
   secondaryButton: {
