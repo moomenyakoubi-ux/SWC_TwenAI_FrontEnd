@@ -1,4 +1,4 @@
-import { BACKEND_BASE_URL } from '../config/api';
+import { API_BASE } from '../config/api';
 
 const PERMESSO_KEYWORDS = [
   'permesso di soggiorno',
@@ -25,7 +25,7 @@ export const inferIntentFromQuestion = (question) => {
 };
 
 export const askAI = async (question, options = {}) => {
-  const baseUrl = (BACKEND_BASE_URL || '').replace(/\/$/, '');
+  const baseUrl = (API_BASE || '').replace(/\/$/, '');
   const manualIntent = options?.intent;
   const intent = manualIntent || inferIntentFromQuestion(question);
   const requestedLang = String(options?.lang || 'it').trim().toLowerCase();
