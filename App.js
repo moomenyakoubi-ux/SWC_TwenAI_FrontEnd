@@ -4,7 +4,7 @@ import { View, Text } from "react-native";
 export default function App() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ fontSize: 20 }}>SHELL OK ✅</Text>
+      <Text style={{ fontSize: 20 }}>RENDER OK ✅</Text>
     </View>
   );
 }
