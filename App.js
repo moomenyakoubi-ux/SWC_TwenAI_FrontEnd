@@ -286,13 +286,16 @@ export default function App() {
     Asset.loadAsync([sharedBackgroundAsset, chatBackgroundAsset]);
   }, []);
 
-  return (
-    <LanguageProvider>
-      <ContactsProvider>
-        <PostsProvider>
+return (
+  <LanguageProvider>
+    <ContactsProvider>
+      <PostsProvider>
+        <ErrorBoundary>
           <AppContent />
-        </PostsProvider>
-      </ContactsProvider>
-    </LanguageProvider>
-  );
+        </ErrorBoundary>
+      </PostsProvider>
+    </ContactsProvider>
+  </LanguageProvider>
+);
+
 }
