@@ -55,9 +55,17 @@ Supabase settings checklist:
 - If you use Vercel preview domains, add those preview URLs to the allowlist while testing.
 */
 
+const isWebUpdatePasswordUrl = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  const path = window.location.pathname || '';
+  const hash = window.location.hash || '';
+  if (path === '/auth/update-password') return true;
+  if (hash.includes('/auth/update-password') || hash.includes('auth/update-password')) return true;
+  return false;
+};
+
 const getAuthRouteFromPath = () => {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return AUTH_ROUTES.login;
-  if (window.location.pathname === '/auth/update-password') return AUTH_ROUTES.update;
+  if (isWebUpdatePasswordUrl()) return AUTH_ROUTES.update;
   return AUTH_ROUTES.login;
 };
 
@@ -220,8 +228,8 @@ const MainApp = () => (
   </NavigationContainer>
 );
 
-const AuthFlow = ({ session, forcedRoute, onExit }) => {
-  const [route, setRoute] = useState(getAuthRouteFromPath);
+const AuthFlow = ({ session, forcedRoute, onExit, initialRoute }) => {
+  const [route, setRoute] = useState(() => initialRoute || getAuthRouteFromPath());
 
   useEffect(() => {
     if (!forcedRoute || forcedRoute === route) return;
@@ -276,8 +284,10 @@ const ProfileLanguageSync = () => {
 
 const AppContent = () => {
   const { user, loading, session } = useSession();
-  const isUpdatePasswordPath = getAuthRouteFromPath() === AUTH_ROUTES.update;
+  const [isUpdatePasswordEntry] = useState(() => getAuthRouteFromPath() === AUTH_ROUTES.update);
   const [forcedAuthRoute, setForcedAuthRoute] = useState(null);
+  const initialAuthRoute =
+    forcedAuthRoute || (isUpdatePasswordEntry ? AUTH_ROUTES.update : getAuthRouteFromPath());
 
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
@@ -306,13 +316,26 @@ const AppContent = () => {
     );
   }
 
-  const shouldShowAuthFlow = !user || isUpdatePasswordPath || forcedAuthRoute === AUTH_ROUTES.update;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    // Debug-only: avoid logging hash tokens.
+    console.log('[auth:update-password]', {
+      pathname: window.location.pathname || '',
+      hashPresent: Boolean(window.location.hash),
+      isUpdatePasswordEntry,
+      initialAuthRoute,
+    });
+  }, [initialAuthRoute, isUpdatePasswordEntry]);
+
+  const shouldShowAuthFlow =
+    !user || isUpdatePasswordEntry || forcedAuthRoute === AUTH_ROUTES.update;
 
   if (shouldShowAuthFlow) {
     return (
       <AuthFlow
         session={session}
         forcedRoute={forcedAuthRoute}
+        initialRoute={initialAuthRoute}
         onExit={() => setForcedAuthRoute(null)}
       />
     );
