@@ -59,8 +59,10 @@ const isWebUpdatePasswordUrl = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
   const path = window.location.pathname || '';
   const hash = window.location.hash || '';
+  const hashLower = hash.toLowerCase();
   if (path === '/auth/update-password') return true;
-  if (hash.includes('/auth/update-password') || hash.includes('auth/update-password')) return true;
+  if (hashLower.includes('type=recovery')) return true;
+  if (hashLower.includes('/auth/update-password') || hashLower.includes('auth/update-password')) return true;
   return false;
 };
 
