@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -21,8 +21,12 @@ const isValidEmail = (value) => /\S+@\S+\.\S+/.test(value);
 const getReadableSupabaseError = (error) => {
   if (!error?.message) return 'Si è verificato un errore. Riprova.';
   const message = error.message.toLowerCase();
-  if (message.includes('email')) return "Controlla che l'email sia corretta.";
-  if (message.includes('rate limit')) return 'Hai fatto troppi tentativi. Riprova più tardi.';
+  if (error.status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
+    return 'Troppi tentativi. Riprova tra qualche minuto.';
+  }
+  if (message.includes('invalid') && message.includes('email')) {
+    return "Controlla che l'email sia corretta.";
+  }
   return error.message;
 };
 
@@ -38,6 +42,15 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return undefined;
+    const intervalId = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [cooldownSeconds]);
 
   const handleSubmit = async () => {
     const trimmedEmail = email.trim();
@@ -47,8 +60,15 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
       return;
     }
 
+    if (cooldownSeconds > 0) {
+      setErrorMessage(`Attendi ${cooldownSeconds} secondi prima di riprovare.`);
+      setStatusMessage('');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
+    setStatusMessage('');
 
     const redirectTo = buildResetRedirectUrl();
     if (Platform.OS === 'web' && !redirectTo.startsWith('http')) {
@@ -57,11 +77,14 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
     const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo });
 
     if (error) {
+      console.log('[forgot-password] reset error:', error.message);
       setErrorMessage(getReadableSupabaseError(error));
+    } else {
+      setStatusMessage(SUCCESS_MESSAGE);
     }
 
-    setStatusMessage(SUCCESS_MESSAGE);
     setLoading(false);
+    setCooldownSeconds(60);
   };
 
   return (
@@ -92,16 +115,25 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
           {statusMessage ? <Text style={styles.status}>{statusMessage}</Text> : null}
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
+            style={[
+              styles.primaryButton,
+              (loading || cooldownSeconds > 0 || email.trim().length === 0) && styles.buttonDisabled,
+            ]}
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={loading || cooldownSeconds > 0 || email.trim().length === 0}
           >
             {loading ? (
               <ActivityIndicator color={theme.colors.card} />
             ) : (
-              <Text style={styles.primaryButtonText}>Invia link di recupero</Text>
+              <Text style={styles.primaryButtonText}>
+                {cooldownSeconds > 0 ? `Riprova tra ${cooldownSeconds}s` : 'Invia link reset'}
+              </Text>
             )}
           </TouchableOpacity>
+
+          {cooldownSeconds > 0 ? (
+            <Text style={styles.cooldown}>Puoi riprovare tra {cooldownSeconds} secondi.</Text>
+          ) : null}
 
           <TouchableOpacity style={styles.linkButton} onPress={onBackToLogin} disabled={loading}>
             <Text style={styles.linkText}>Torna al login</Text>
@@ -163,6 +195,11 @@ const styles = StyleSheet.create({
   status: {
     color: theme.colors.secondary,
     fontWeight: '600',
+  },
+  cooldown: {
+    color: theme.colors.muted,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   primaryButton: {
     backgroundColor: theme.colors.secondary,
