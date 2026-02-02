@@ -308,14 +308,6 @@ const AppContent = () => {
     };
   }, []);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={theme.colors.secondary} />
-      </View>
-    );
-  }
-
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
     // Debug-only: avoid logging hash tokens.
@@ -326,6 +318,14 @@ const AppContent = () => {
       initialAuthRoute,
     });
   }, [initialAuthRoute, isUpdatePasswordEntry]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.secondary} />
+      </View>
+    );
+  }
 
   const shouldShowAuthFlow =
     !user || isUpdatePasswordEntry || forcedAuthRoute === AUTH_ROUTES.update;
