@@ -5,6 +5,7 @@ import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } f
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
+import * as Linking from 'expo-linking';
 import HomeScreen from './app/screens/HomeScreen';
 import ChatScreen from './app/screens/ChatScreen';
 import NewsScreen from './app/screens/NewsScreen';
@@ -34,6 +35,7 @@ import UpdatePasswordScreen from './app/screens/UpdatePasswordScreen';
 import useSession from './app/auth/useSession';
 import useProfile from './app/profile/useProfile';
 import ErrorBoundary from './app/components/ErrorBoundary';
+import { isUpdatePasswordLink } from './app/utils/authRedirect';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -44,6 +46,14 @@ const AUTH_ROUTES = {
   forgot: 'forgot',
   update: 'update',
 };
+
+/*
+Supabase settings checklist:
+- Authentication → URL Configuration: Site URL = https://<domain>
+- Redirect URLs allowlist: https://<domain>/auth/update-password
+- Redirect URL for mobile: <scheme>://auth/update-password
+- If you use Vercel preview domains, add those preview URLs to the allowlist while testing.
+*/
 
 const getAuthRouteFromPath = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return AUTH_ROUTES.login;
@@ -210,8 +220,14 @@ const MainApp = () => (
   </NavigationContainer>
 );
 
-const AuthFlow = ({ session }) => {
+const AuthFlow = ({ session, forcedRoute, onExit }) => {
   const [route, setRoute] = useState(getAuthRouteFromPath);
+
+  useEffect(() => {
+    if (!forcedRoute || forcedRoute === route) return;
+    setRoute(forcedRoute);
+    replaceAuthPath(forcedRoute);
+  }, [forcedRoute, route]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
@@ -223,6 +239,9 @@ const AuthFlow = ({ session }) => {
   const navigate = (nextRoute) => {
     setRoute(nextRoute);
     replaceAuthPath(nextRoute);
+    if (nextRoute === AUTH_ROUTES.login && onExit) {
+      onExit();
+    }
   };
 
   if (route === AUTH_ROUTES.update) {
@@ -258,6 +277,26 @@ const ProfileLanguageSync = () => {
 const AppContent = () => {
   const { user, loading, session } = useSession();
   const isUpdatePasswordPath = getAuthRouteFromPath() === AUTH_ROUTES.update;
+  const [forcedAuthRoute, setForcedAuthRoute] = useState(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    let isMounted = true;
+
+    const handleUrl = (url) => {
+      if (isUpdatePasswordLink(url)) {
+        if (isMounted) setForcedAuthRoute(AUTH_ROUTES.update);
+      }
+    };
+
+    Linking.getInitialURL().then((url) => handleUrl(url));
+    const subscription = Linking.addEventListener('url', (event) => handleUrl(event?.url));
+
+    return () => {
+      isMounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
 
   if (loading) {
     return (
@@ -267,8 +306,16 @@ const AppContent = () => {
     );
   }
 
-  if (!user || isUpdatePasswordPath) {
-    return <AuthFlow session={session} />;
+  const shouldShowAuthFlow = !user || isUpdatePasswordPath || forcedAuthRoute === AUTH_ROUTES.update;
+
+  if (shouldShowAuthFlow) {
+    return (
+      <AuthFlow
+        session={session}
+        forcedRoute={forcedAuthRoute}
+        onExit={() => setForcedAuthRoute(null)}
+      />
+    );
   }
 
   return (

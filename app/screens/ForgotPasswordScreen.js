@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import theme from '../styles/theme';
 import { supabase } from '../lib/supabase';
+import { buildResetRedirectUrl } from '../utils/authRedirect';
 
 const SUCCESS_MESSAGE = "Se l'email esiste, ti abbiamo inviato un link per reimpostare la password.";
 
@@ -42,15 +43,8 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
     setLoading(true);
     setErrorMessage('');
 
-    const redirectTo =
-      Platform.OS === 'web' && typeof window !== 'undefined'
-        ? `${window.location.origin}/auth/update-password`
-        : undefined;
-
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      trimmedEmail,
-      redirectTo ? { redirectTo } : undefined
-    );
+    const redirectTo = buildResetRedirectUrl();
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo });
 
     if (error) {
       setErrorMessage(getReadableSupabaseError(error));

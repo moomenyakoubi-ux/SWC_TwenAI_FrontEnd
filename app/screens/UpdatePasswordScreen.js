@@ -13,10 +13,12 @@ import {
 import theme from '../styles/theme';
 import { supabase } from '../lib/supabase';
 
+const SESSION_TIMEOUT_MS = 9000;
+
 const getReadableSupabaseError = (error) => {
-  if (!error?.message) return "Si e' verificato un errore. Riprova.";
+  if (!error?.message) return 'Si è verificato un errore. Riprova.';
   const message = error.message.toLowerCase();
-  if (message.includes('password')) return 'La password non rispetta i requisiti.';
+  if (message.includes('password')) return 'La password non rispetta i requisiti richiesti.';
   if (message.includes('session')) return 'Sessione non valida. Richiedi un nuovo link.';
   return error.message;
 };
@@ -27,7 +29,56 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [activeSession, setActiveSession] = useState(session || null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [timedOut, setTimedOut] = useState(false);
   const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (session) {
+      setActiveSession(session);
+      setCheckingSession(false);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const timeoutId = setTimeout(() => {
+      if (isMounted) setTimedOut(true);
+    }, SESSION_TIMEOUT_MS);
+
+    const syncSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      if (data?.session) {
+        setActiveSession(data.session);
+        setCheckingSession(false);
+        return;
+      }
+      if (error) {
+        setErrorMessage(getReadableSupabaseError(error));
+      }
+      setCheckingSession(false);
+    };
+
+    syncSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!isMounted) return;
+      if (event === 'PASSWORD_RECOVERY' || nextSession) {
+        setActiveSession(nextSession);
+        setCheckingSession(false);
+        setTimedOut(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -40,10 +91,12 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
   const handleSubmit = async () => {
     if (password.length < 8) {
       setErrorMessage('La password deve avere almeno 8 caratteri.');
+      setStatusMessage('');
       return;
     }
     if (password !== confirmPassword) {
       setErrorMessage('Le password non corrispondono.');
+      setStatusMessage('');
       return;
     }
 
@@ -59,7 +112,7 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
       return;
     }
 
-    setStatusMessage('Password aggiornata con successo');
+    setStatusMessage('Password aggiornata con successo. Ora puoi accedere.');
     setLoading(false);
     timeoutRef.current = setTimeout(async () => {
       await supabase.auth.signOut();
@@ -67,17 +120,32 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
     }, 1500);
   };
 
-  if (!session?.user) {
+  if (!activeSession?.user) {
+    if (checkingSession && !timedOut) {
+      return (
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.container}>
+            <View style={styles.card}>
+              <ActivityIndicator size="large" color={theme.colors.secondary} />
+              <Text style={styles.title}>Sto verificando il link...</Text>
+              <Text style={styles.subtitle}>Attendi qualche secondo.</Text>
+            </View>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.card}>
             <Text style={styles.title}>Link non valido o scaduto</Text>
             <Text style={styles.subtitle}>
-              Il link potrebbe essere gia usato o non piu valido. Richiedi un nuovo link.
+              Il link potrebbe essere già usato o non più valido. Richiedi un nuovo link.
             </Text>
+            {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
             <TouchableOpacity style={styles.primaryButton} onPress={onBackToLogin}>
-              <Text style={styles.primaryButtonText}>Torna al login</Text>
+              <Text style={styles.primaryButtonText}>Richiedi un nuovo link</Text>
             </TouchableOpacity>
           </View>
         </View>

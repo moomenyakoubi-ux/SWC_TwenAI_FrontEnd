@@ -10,6 +10,6 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     storage: AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: Platform.OS === 'web',
+    detectSessionInUrl: Platform.OS === 'web' ? true : false,
   },
 });
