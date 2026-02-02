@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 const UPDATE_PASSWORD_PATH = 'auth/update-password';
 const UPDATE_PASSWORD_WEB_PATH = '/auth/update-password';
 
+// Supabase richiede redirectTo assoluto su web, altrimenti interpreta il path come relativo a *.supabase.co.
 export const buildResetRedirectUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     return `${window.location.origin}${UPDATE_PASSWORD_WEB_PATH}`;
