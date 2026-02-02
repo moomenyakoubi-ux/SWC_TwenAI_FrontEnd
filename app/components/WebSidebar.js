@@ -28,7 +28,9 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
           <TouchableOpacity
             key={item.route}
             style={[styles.menuItem, isRTL && styles.menuItemRtl]}
-            onPress={() => navigation?.navigate(item.route)}
+            onPress={() => {
+              if (navigation?.isReady?.()) navigation.navigate(item.route);
+            }}
           >
             <Ionicons name={item.icon} size={22} color={theme.colors.secondary} />
             <Text style={[styles.menuLabel, isRTL && styles.rtlText]}>{item.label}</Text>
