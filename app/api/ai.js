@@ -1,4 +1,4 @@
-import { API_BASE } from '../config/api';
+import { getApiBaseUrl, logHealthCheck } from '../config/api';
 
 const PERMESSO_KEYWORDS = [
   'permesso di soggiorno',
@@ -25,7 +25,11 @@ export const inferIntentFromQuestion = (question) => {
 };
 
 export const askAI = async (question, options = {}) => {
-  const baseUrl = (API_BASE || '').replace(/\/$/, '');
+  const baseUrl = getApiBaseUrl();
+  logHealthCheck();
+  if (!baseUrl) {
+    throw new Error('API base URL is not configured.');
+  }
   const manualIntent = options?.intent;
   const intent = manualIntent || inferIntentFromQuestion(question);
   const requestedLang = String(options?.lang || 'it').trim().toLowerCase();
