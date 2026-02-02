@@ -32,81 +32,85 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [activeSession, setActiveSession] = useState(session || null);
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [timedOut, setTimedOut] = useState(false);
-  const [isRecoverySession, setIsRecoverySession] = useState(false);
-  const [recoveryChecked, setRecoveryChecked] = useState(false);
+  const [verifying, setVerifying] = useState(true);
+  const [recoverySessionReady, setRecoverySessionReady] = useState(false);
   const timeoutRef = useRef(null);
+  const recoveryReadyRef = useRef(false);
 
-  useEffect(() => {
-    if (session) {
-      setActiveSession(session);
-      setCheckingSession(false);
+  const markRecoveryReady = (value) => {
+    recoveryReadyRef.current = value;
+    setRecoverySessionReady(value);
+    if (value) {
+      setErrorMessage('');
     }
-  }, [session]);
+  };
 
   useEffect(() => {
     let isMounted = true;
 
-    const timeoutId = setTimeout(() => {
-      if (isMounted) setTimedOut(true);
-    }, SESSION_TIMEOUT_MS);
+    setVerifying(true);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!isMounted) return;
+      if (nextSession || event === 'PASSWORD_RECOVERY') {
+        markRecoveryReady(true);
+        setVerifying(false);
+      }
+    });
 
     const syncSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (!isMounted) return;
-      if (data?.session) {
-        setActiveSession(data.session);
-        setCheckingSession(false);
+      if (session) {
+        markRecoveryReady(true);
+        setVerifying(false);
         return;
       }
-      if (error) {
-        setErrorMessage(getReadableSupabaseError(error));
+
+      const { data } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      if (data?.session) {
+        markRecoveryReady(true);
+        setVerifying(false);
+        return;
       }
-      setCheckingSession(false);
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const rawHash = window.location.hash.startsWith('#')
+          ? window.location.hash.slice(1)
+          : window.location.hash;
+        const params = new URLSearchParams(rawHash);
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+        const type = params.get('type');
+        if (access_token && refresh_token && type === 'recovery') {
+          await supabase.auth.setSession({ access_token, refresh_token });
+          const { data: fallbackData } = await supabase.auth.getSession();
+          if (!isMounted) return;
+          if (fallbackData?.session) {
+            markRecoveryReady(true);
+            setVerifying(false);
+          }
+        }
+      }
     };
 
     syncSession();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    timeoutRef.current = setTimeout(() => {
       if (!isMounted) return;
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsRecoverySession(true);
-        setRecoveryChecked(true);
+      if (!recoveryReadyRef.current) {
+        setErrorMessage('Link non valido o scaduto. Rifai "Forgot password".');
+        setVerifying(false);
       }
-      if (event === 'PASSWORD_RECOVERY' || nextSession) {
-        setActiveSession(nextSession);
-        setCheckingSession(false);
-        setTimedOut(false);
-      }
-    });
+    }, SESSION_TIMEOUT_MS);
 
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
-      authListener?.subscription?.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const hash = window.location?.hash ? window.location.hash.slice(1) : '';
-    const search = window.location?.search ? window.location.search.slice(1) : '';
-    const params = new URLSearchParams([search, hash].filter(Boolean).join('&'));
-    if (params.get('type') === 'recovery') {
-      setIsRecoverySession(true);
-    }
-    setRecoveryChecked(true);
-  }, []);
-
-  useEffect(() => {
-    return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      authListener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [session]);
 
   const handleSubmit = async () => {
     if (password.length < 8) {
@@ -148,29 +152,28 @@ const UpdatePasswordScreen = ({ session, onBackToLogin }) => {
     }, 1500);
   };
 
-  const shouldShowLoader = (checkingSession || !recoveryChecked) && !timedOut;
-  const shouldBlockForm = !activeSession?.user || !isRecoverySession;
-
-  if (shouldBlockForm) {
-    if (shouldShowLoader) {
-      return (
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.container}>
-            <View style={styles.card}>
-              <ActivityIndicator size="large" color={theme.colors.secondary} />
-              <Text style={styles.title}>Sto verificando il link...</Text>
-              <Text style={styles.subtitle}>Attendi qualche secondo.</Text>
-            </View>
-          </View>
-        </SafeAreaView>
-      );
-    }
-
+  if (verifying) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.card}>
-            <Text style={styles.title}>Link non valido o scaduto. Rifai "Forgot password".</Text>
+            <ActivityIndicator size="large" color={theme.colors.secondary} />
+            <Text style={styles.title}>Verifica link in corso...</Text>
+            <Text style={styles.subtitle}>Attendi qualche secondo.</Text>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!recoverySessionReady) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <View style={styles.card}>
+            <Text style={styles.title}>
+              {errorMessage || 'Link non valido o scaduto. Rifai "Forgot password".'}
+            </Text>
           </View>
         </View>
       </SafeAreaView>
