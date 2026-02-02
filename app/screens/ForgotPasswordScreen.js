@@ -10,9 +10,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import theme from '../styles/theme';
 import { supabase } from '../lib/supabase';
-import { buildResetRedirectUrl } from '../utils/authRedirect';
 
 const SUCCESS_MESSAGE = "Se l'email esiste, ti abbiamo inviato un link per reimpostare la password.";
 
@@ -26,6 +26,13 @@ const getReadableSupabaseError = (error) => {
   return error.message;
 };
 
+function buildResetRedirectUrl() {
+  if (Platform.OS === 'web') {
+    return `${window.location.origin}/auth/update-password`;
+  }
+  return Linking.createURL('auth/update-password');
+}
+
 const ForgotPasswordScreen = ({ onBackToLogin }) => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,7 +40,7 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
   const [statusMessage, setStatusMessage] = useState('');
 
   const handleSubmit = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
       setErrorMessage('Inserisci un indirizzo email valido.');
       setStatusMessage('');
@@ -44,6 +51,9 @@ const ForgotPasswordScreen = ({ onBackToLogin }) => {
     setErrorMessage('');
 
     const redirectTo = buildResetRedirectUrl();
+    if (Platform.OS === 'web' && !redirectTo.startsWith('http')) {
+      throw new Error('redirectTo must be absolute on web');
+    }
     const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo });
 
     if (error) {
