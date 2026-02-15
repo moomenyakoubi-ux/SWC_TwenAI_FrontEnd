@@ -55,6 +55,42 @@ const CARRIER_NAMES = {
 
 const ANY_OPTION = { label: 'Qualsiasi', value: null };
 
+const extractIataFromLabel = (label) => {
+  if (typeof label !== 'string') return '';
+  const match = label.match(/\(([A-Za-z]{3})\)/);
+  return match?.[1] || '';
+};
+
+const normalizeIataCode = (value, fallbackLabel = '') => {
+  if (typeof value === 'string' && value.trim()) {
+    const trimmedValue = value.trim();
+    if (/^[A-Za-z]{3}$/.test(trimmedValue)) {
+      return trimmedValue.toUpperCase();
+    }
+    const embeddedCode = extractIataFromLabel(trimmedValue);
+    if (embeddedCode) {
+      return embeddedCode.toUpperCase();
+    }
+  }
+  const labelCode = extractIataFromLabel(fallbackLabel);
+  return labelCode ? labelCode.toUpperCase() : '';
+};
+
+const buildAirportOptions = (airports) => {
+  const safeAirports = Array.isArray(airports) ? airports : [];
+  return safeAirports
+    .map((airport) => {
+      const code = normalizeIataCode(airport?.value, airport?.label);
+      if (!code) return null;
+      const city = typeof airport?.label === 'string' ? airport.label.replace(/\s*\([A-Za-z]{3}\)\s*$/, '').trim() : '';
+      return {
+        label: city ? `${city} (${code})` : code,
+        value: code,
+      };
+    })
+    .filter(Boolean);
+};
+
 const STATUS = {
   IDLE: 'idle',
   LOADING: 'loading',
@@ -101,7 +137,7 @@ const TravelScreen = ({ navigation }) => {
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [pickerState, setPickerState] = useState({ visible: false, type: 'departure', date: new Date() });
-  const [originIata, setOriginIata] = useState(AIRPORTS_BY_COUNTRY.IT[0]?.value || null);
+  const [originIata, setOriginIata] = useState(AIRPORTS_BY_COUNTRY.IT[0]?.value || '');
   const [destinationIata, setDestinationIata] = useState(null);
   const [maxStops, setMaxStops] = useState(null);
   const [sortOrder, setSortOrder] = useState('asc');
@@ -119,15 +155,15 @@ const TravelScreen = ({ navigation }) => {
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originAirportOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
   const destinationAirportOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
-  const originOptions = [...originAirportOptions];
-  const destinationOptions = [ANY_OPTION, ...destinationAirportOptions];
+  const originOptions = buildAirportOptions(originAirportOptions);
+  const destinationOptions = [ANY_OPTION, ...buildAirportOptions(destinationAirportOptions)];
 
   useEffect(() => {
     const originValues = originOptions.map((option) => option.value);
     const destinationValues = destinationOptions.map((option) => option.value);
 
     if (!originValues.includes(originIata)) {
-      setOriginIata(originOptions[0]?.value || null);
+      setOriginIata(originOptions[0]?.value || '');
     }
 
     if (!destinationValues.includes(destinationIata)) {
@@ -405,7 +441,7 @@ const TravelScreen = ({ navigation }) => {
     });
   };
 
-  const applyClientTransforms = (offers, nextMaxStops, nextSortOrder) => {
+  const applyTransforms = (offers, nextMaxStops, nextSortOrder) => {
     const filteredOffers = filterOffersByStops(offers, nextMaxStops);
     return sortOffersByPrice(filteredOffers, nextSortOrder);
   };
@@ -424,12 +460,16 @@ const TravelScreen = ({ navigation }) => {
     const nextSortOrder = hasOverride('sortOrder') ? overrides.sortOrder : sortOrder;
     const nextOriginIata = hasOverride('originIata') ? overrides.originIata : originIata;
     const nextDestinationIata = hasOverride('destinationIata') ? overrides.destinationIata : destinationIata;
+    const normalizedOriginIata = normalizeIataCode(nextOriginIata, getOptionLabel(originOptions, nextOriginIata, ''));
+    const fallbackOriginIata = originOptions[0]?.value || '';
+    const finalOriginIata = normalizedOriginIata || fallbackOriginIata;
+    const normalizedDestinationIata = nextDestinationIata === null ? null : normalizeIataCode(nextDestinationIata, '');
 
     return {
       originCountry: nextDepartureCountry,
-      originIata: nextOriginIata,
+      originIata: finalOriginIata,
       destinationCountry: nextDestinationCountry,
-      destinationIata: nextDestinationIata,
+      destinationIata: normalizedDestinationIata,
       departureDate: toIsoDate(nextDepartureDate),
       returnDate: nextReturnDate ? toIsoDate(nextReturnDate) : null,
       maxStops: nextMaxStops ?? null,
@@ -495,7 +535,9 @@ const TravelScreen = ({ navigation }) => {
       }
     }
 
-    console.log('[FlightSearchRequest]', requestPayload);
+    if (__DEV__) {
+      console.log('Flight search payload', requestPayload);
+    }
     setHasSearched(true);
     setDirtyFilters(false);
     setOpenDropdown(null);
@@ -508,10 +550,7 @@ const TravelScreen = ({ navigation }) => {
         console.log('[FlightSearchQueryHash]', data.queryHash);
       }
       const offers = Array.isArray(data) ? data : [];
-      const transformedOffers = applyClientTransforms(offers, requestPayload.maxStops, requestPayload.sortOrder);
       setAllResults(offers);
-      setVisibleResults(transformedOffers);
-      setStatus(transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
       showBanner('success', 'Risultati aggiornati');
     } catch (error) {
       setRequestError(error?.message || travelStrings.errorState);
@@ -537,42 +576,51 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const handleOriginChange = (nextOriginIata) => {
-    if (nextOriginIata === originIata) return;
-    setOriginIata(nextOriginIata);
+    const normalizedOriginIata = normalizeIataCode(nextOriginIata, '');
+    if (!normalizedOriginIata) return;
+    if (normalizedOriginIata === originIata) return;
+    setOriginIata(normalizedOriginIata);
     setFormError('');
     setRequestError('');
-    const selectedOrigin = getOptionLabel(originOptions, nextOriginIata, originOptions[0]?.label || '--');
+    const selectedOrigin = getOptionLabel(originOptions, normalizedOriginIata, originOptions[0]?.label || '--');
     const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
       showBanner('loading', 'Aggiornamento risultati...');
-      void handleSearch({ originIata: nextOriginIata });
+      void handleSearch({ originIata: normalizedOriginIata });
       return;
     }
     showBanner('info', `Partenza aggiornata: ${selectedOrigin}`);
   };
 
   const handleDestinationChange = (nextDestinationIata) => {
-    if (nextDestinationIata === destinationIata) return;
-    setDestinationIata(nextDestinationIata);
+    const normalizedDestinationIata = nextDestinationIata === null ? null : normalizeIataCode(nextDestinationIata, '');
+    if (normalizedDestinationIata === destinationIata) return;
+    setDestinationIata(normalizedDestinationIata);
     setFormError('');
     setRequestError('');
-    const selectedDestination = getOptionLabel(destinationOptions, nextDestinationIata, nextDestinationIata || '--');
+    const selectedDestination = getOptionLabel(
+      destinationOptions,
+      normalizedDestinationIata,
+      normalizedDestinationIata || '--',
+    );
     const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
       showBanner('loading', 'Aggiornamento risultati...');
-      void handleSearch({ destinationIata: nextDestinationIata });
+      void handleSearch({ destinationIata: normalizedDestinationIata });
       return;
     }
     showBanner('info', `Arrivo aggiornato: ${selectedDestination}`);
   };
 
   useEffect(() => {
-    if (status === STATUS.LOADING || status === STATUS.ERROR) return;
-    if (!hasSearched && !allResults.length) return;
-    const transformedOffers = applyClientTransforms(allResults, maxStops, sortOrder);
+    const transformedOffers = applyTransforms(allResults, maxStops, sortOrder);
     setVisibleResults(transformedOffers);
-    setStatus(transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
-  }, [allResults, hasSearched, maxStops, sortOrder, status]);
+    setStatus((prevStatus) => {
+      if (prevStatus === STATUS.ERROR) return prevStatus;
+      if (prevStatus === STATUS.IDLE && !allResults.length) return prevStatus;
+      return transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY;
+    });
+  }, [allResults, maxStops, sortOrder]);
 
   const countryOptions = [
     { value: 'TN', label: travelStrings.tunisia },
