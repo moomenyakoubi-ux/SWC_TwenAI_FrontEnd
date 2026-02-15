@@ -135,7 +135,8 @@ const TravelScreen = ({ navigation }) => {
   });
   const [departureCountry, setDepartureCountry] = useState('IT');
   const [departureDate, setDepartureDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  const [returnDate, setReturnDate] = useState(null);
+  const [tripType, setTripType] = useState('oneway');
   const [pickerState, setPickerState] = useState({ visible: false, type: 'departure', date: new Date() });
   const [originIata, setOriginIata] = useState(AIRPORTS_BY_COUNTRY.IT[0]?.value || '');
   const [destinationIata, setDestinationIata] = useState(null);
@@ -178,7 +179,7 @@ const TravelScreen = ({ navigation }) => {
     setFormError('');
     setRequestError('');
     setDirtyFilters(true);
-  }, [departureCountry, departureDate, returnDate, hasSearched]);
+  }, [departureCountry, departureDate, returnDate, tripType, hasSearched]);
 
   const formatDate = (date) => {
     const day = String(date.getDate()).padStart(2, '0');
@@ -404,6 +405,19 @@ const TravelScreen = ({ navigation }) => {
     return Number.isFinite(amount) ? amount : null;
   };
 
+  const filterOffersByOrigin = (offers, selectedOriginIata) => {
+    const expectedOrigin = normalizeIataCode(selectedOriginIata, '');
+    if (!expectedOrigin) return [];
+    const safeOffers = Array.isArray(offers) ? [...offers] : [];
+    return safeOffers.filter((offer) => {
+      const outboundSegments = Array.isArray(offer?.outbound?.segments) ? offer.outbound.segments : [];
+      const firstOutboundSegment = outboundSegments[0];
+      if (!firstOutboundSegment) return false;
+      const offerOrigin = normalizeIataCode(firstOutboundSegment?.from || firstOutboundSegment?.fromIata, '');
+      return Boolean(offerOrigin) && offerOrigin === expectedOrigin;
+    });
+  };
+
   const sortOffersByPrice = (offers, order) => {
     const safeOffers = Array.isArray(offers) ? [...offers] : [];
     return safeOffers.sort((a, b) => {
@@ -441,8 +455,9 @@ const TravelScreen = ({ navigation }) => {
     });
   };
 
-  const applyTransforms = (offers, nextMaxStops, nextSortOrder) => {
-    const filteredOffers = filterOffersByStops(offers, nextMaxStops);
+  const applyTransforms = (offers, selectedOriginIata, nextMaxStops, nextSortOrder) => {
+    const originFilteredOffers = filterOffersByOrigin(offers, selectedOriginIata);
+    const filteredOffers = filterOffersByStops(originFilteredOffers, nextMaxStops);
     return sortOffersByPrice(filteredOffers, nextSortOrder);
   };
 
@@ -456,6 +471,7 @@ const TravelScreen = ({ navigation }) => {
         : 'IT';
     const nextDepartureDate = hasOverride('departureDate') ? overrides.departureDate : departureDate;
     const nextReturnDate = hasOverride('returnDate') ? overrides.returnDate : returnDate;
+    const nextTripType = hasOverride('tripType') ? overrides.tripType : tripType;
     const nextMaxStops = hasOverride('maxStops') ? overrides.maxStops : maxStops;
     const nextSortOrder = hasOverride('sortOrder') ? overrides.sortOrder : sortOrder;
     const nextOriginIata = hasOverride('originIata') ? overrides.originIata : originIata;
@@ -471,7 +487,7 @@ const TravelScreen = ({ navigation }) => {
       destinationCountry: nextDestinationCountry,
       destinationIata: normalizedDestinationIata,
       departureDate: toIsoDate(nextDepartureDate),
-      returnDate: nextReturnDate ? toIsoDate(nextReturnDate) : null,
+      returnDate: nextTripType === 'roundtrip' && nextReturnDate ? toIsoDate(nextReturnDate) : null,
       maxStops: nextMaxStops ?? null,
       sortBy: 'price',
       sortOrder: nextSortOrder,
@@ -501,7 +517,7 @@ const TravelScreen = ({ navigation }) => {
     const stopsLabel = maxStops === null ? ANY_OPTION.label : String(maxStops);
     const priceDirection = sortOrder === 'desc' ? '↓' : '↑';
     const departureSummary = formatSummaryDate(departureDate);
-    const returnSummary = formatSummaryDate(returnDate);
+    const returnSummary = tripType === 'roundtrip' ? formatSummaryDate(returnDate) : '--';
     return `${originLabel} → ${destinationLabel} • Scali: ${stopsLabel} • Prezzo: ${priceDirection} • Date: ${departureSummary} – ${returnSummary}`;
   };
 
@@ -510,6 +526,7 @@ const TravelScreen = ({ navigation }) => {
 
     const nextDepartureDate = overrides.departureDate ?? departureDate;
     const nextReturnDate = overrides.returnDate ?? returnDate;
+    const nextTripType = overrides.tripType ?? tripType;
     const requestPayload = buildRequestPayload(overrides);
 
     setFormError('');
@@ -526,7 +543,14 @@ const TravelScreen = ({ navigation }) => {
       return;
     }
 
-    if (nextReturnDate) {
+    if (nextTripType === 'roundtrip' && !nextReturnDate) {
+      const missingReturnMessage = 'Seleziona la data di ritorno';
+      setFormError(missingReturnMessage);
+      showBanner('error', missingReturnMessage);
+      return;
+    }
+
+    if (nextTripType === 'roundtrip' && nextReturnDate) {
       const departureValue = parseDateString(nextDepartureDate);
       const returnValue = parseDateString(nextReturnDate);
       if (returnValue < departureValue) {
@@ -612,19 +636,70 @@ const TravelScreen = ({ navigation }) => {
     showBanner('info', `Arrivo aggiornato: ${selectedDestination}`);
   };
 
+  const handleTripTypeChange = (nextTripType) => {
+    if (nextTripType === tripType) return;
+    setTripType(nextTripType);
+    setFormError('');
+    setRequestError('');
+
+    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+
+    if (nextTripType === 'oneway') {
+      if (returnDate !== null) {
+        setReturnDate(null);
+      }
+      showBanner('info', 'Modalita: solo andata');
+      if (shouldAutoSearch) {
+        void handleSearch({ tripType: 'oneway', returnDate: null });
+      }
+      return;
+    }
+
+    showBanner('info', 'Modalita: andata e ritorno');
+    if (!shouldAutoSearch) return;
+
+    if (!returnDate) {
+      const missingReturnMessage = 'Seleziona la data di ritorno';
+      setFormError(missingReturnMessage);
+      showBanner('error', missingReturnMessage);
+      return;
+    }
+
+    if (!departureDate) {
+      setFormError(travelStrings.departureDateRequired);
+      showBanner('error', travelStrings.departureDateRequired);
+      return;
+    }
+
+    const departureValue = parseDateString(departureDate);
+    const returnValue = parseDateString(returnDate);
+    if (returnValue < departureValue) {
+      setFormError(travelStrings.returnBeforeDeparture);
+      showBanner('error', travelStrings.returnBeforeDeparture);
+      return;
+    }
+
+    void handleSearch({ tripType: 'roundtrip' });
+  };
+
   useEffect(() => {
-    const transformedOffers = applyTransforms(allResults, maxStops, sortOrder);
+    const transformedOffers = applyTransforms(allResults, originIata, maxStops, sortOrder);
     setVisibleResults(transformedOffers);
     setStatus((prevStatus) => {
       if (prevStatus === STATUS.ERROR) return prevStatus;
       if (prevStatus === STATUS.IDLE && !allResults.length) return prevStatus;
       return transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY;
     });
-  }, [allResults, maxStops, sortOrder]);
+  }, [allResults, originIata, maxStops, sortOrder]);
 
   const countryOptions = [
     { value: 'TN', label: travelStrings.tunisia },
     { value: 'IT', label: travelStrings.italy },
+  ];
+
+  const tripTypeOptions = [
+    { key: 'oneway', value: 'oneway', label: 'Solo andata' },
+    { key: 'roundtrip', value: 'roundtrip', label: 'Andata e ritorno' },
   ];
 
   const stopsOptions = [
@@ -734,6 +809,28 @@ const TravelScreen = ({ navigation }) => {
   );
 
   const renderTrip = ({ item }) => {
+    const formatStopsAirportsLine = (segments, stopsValue, singularLabel, pluralLabel) => {
+      const stopsNumber = Math.floor(Number(stopsValue));
+      if (!Number.isFinite(stopsNumber) || stopsNumber <= 0) {
+        return 'Diretto';
+      }
+
+      const safeSegments = Array.isArray(segments) ? segments : [];
+      const stopsAirports = safeSegments
+        .slice(0, -1)
+        .map((segment) => normalizeIataCode(segment?.to || segment?.toIata, ''))
+        .filter(Boolean);
+
+      if (!stopsAirports.length) {
+        return stopsNumber === 1 ? `${singularLabel}: --` : `${pluralLabel}: --`;
+      }
+
+      const visibleStops = stopsAirports.slice(0, 3);
+      const suffix = stopsAirports.length > 3 ? ', ...' : '';
+      const label = stopsAirports.length === 1 ? singularLabel : pluralLabel;
+      return `${label}: ${visibleStops.join(', ')}${suffix}`;
+    };
+
     const outboundSegments = Array.isArray(item?.outbound?.segments) ? item.outbound.segments : [];
     const firstOutboundSegment = outboundSegments[0];
     const lastOutboundSegment = outboundSegments[outboundSegments.length - 1];
@@ -746,25 +843,36 @@ const TravelScreen = ({ navigation }) => {
     const outboundCarrierLine = formatCarrierLine(
       outboundCarrierCodes.length ? outboundCarrierCodes : outboundMetaCarrierCodes,
     );
-    const outboundInfo = `${outboundCarrierLine} • ${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
+    const outboundInfo = `${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
+    const outboundStopsLine = formatStopsAirportsLine(outboundSegments, item?.outbound?.stops, 'Scalo', 'Scali');
     const formattedPrice = formatPrice(item?.price);
 
     const hasInbound = Boolean(item?.inbound);
     const inboundSegments = Array.isArray(item?.inbound?.segments) ? item.inbound.segments : [];
     const inboundCarrierLine = formatCarrierLine(getUniqueCarriersFromSegments(inboundSegments));
     const inboundTimes = `${formatTime(item?.inbound?.departure)} – ${formatTime(item?.inbound?.arrival)}`;
-    const inboundInfo = `${inboundCarrierLine} • ${formatStops(item?.inbound?.stops)} • Durata: ${formatDuration(item?.inbound?.durationMinutes)}`;
+    const inboundInfo = `${formatStops(item?.inbound?.stops)} • Durata: ${formatDuration(item?.inbound?.durationMinutes)}`;
+    const inboundStopsLine = formatStopsAirportsLine(
+      inboundSegments,
+      item?.inbound?.stops,
+      'Scalo ritorno',
+      'Scali ritorno',
+    );
 
     return (
       <View style={styles.flightCard}>
         <Text style={[styles.flightRouteTitle, isRTL && styles.rtlText]}>{`${routeOrigin} → ${routeDestination}`}</Text>
         <Text style={[styles.flightTimes, isRTL && styles.rtlText]}>{outboundTimes}</Text>
+        <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundCarrierLine}</Text>
         <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundInfo}</Text>
+        <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundStopsLine}</Text>
         <Text style={[styles.flightPrice, isRTL && styles.rtlText]}>{formattedPrice}</Text>
         {hasInbound ? (
           <View style={styles.returnBlock}>
             <Text style={[styles.returnTitle, isRTL && styles.rtlText]}>{`Ritorno: ${inboundTimes}`}</Text>
+            <Text style={[styles.returnInfo, isRTL && styles.rtlText]}>{inboundCarrierLine}</Text>
             <Text style={[styles.returnInfo, isRTL && styles.rtlText]}>{inboundInfo}</Text>
+            <Text style={[styles.returnInfo, isRTL && styles.rtlText]}>{inboundStopsLine}</Text>
           </View>
         ) : null}
       </View>
@@ -855,6 +963,9 @@ const TravelScreen = ({ navigation }) => {
                   </ScrollView>
                 </View>
 
+                <Text style={[styles.label, isRTL && styles.rtlText]}>Tipo viaggio</Text>
+                {renderSegmentedControl(tripTypeOptions, tripType, handleTripTypeChange)}
+
                 <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureDateLabel}</Text>
                 <TextInput
                   style={[styles.input, isRTL && styles.inputRtl]}
@@ -868,18 +979,22 @@ const TravelScreen = ({ navigation }) => {
                   editable={isAndroid}
                 />
 
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.returnDateLabel}</Text>
-                <TextInput
-                  style={[styles.input, isRTL && styles.inputRtl]}
-                  placeholder={`${travelStrings.datePlaceholder} (${travelStrings.optionalLabel})`}
-                  placeholderTextColor={theme.colors.muted}
-                  value={returnDate}
-                  onFocus={() => openDatePicker('return')}
-                  onPressIn={() => openDatePicker('return')}
-                  showSoftInputOnFocus={false}
-                  caretHidden
-                  editable={isAndroid}
-                />
+                {tripType === 'roundtrip' ? (
+                  <>
+                    <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.returnDateLabel}</Text>
+                    <TextInput
+                      style={[styles.input, isRTL && styles.inputRtl]}
+                      placeholder={travelStrings.datePlaceholder}
+                      placeholderTextColor={theme.colors.muted}
+                      value={returnDate || ''}
+                      onFocus={() => openDatePicker('return')}
+                      onPressIn={() => openDatePicker('return')}
+                      showSoftInputOnFocus={false}
+                      caretHidden
+                      editable={isAndroid}
+                    />
+                  </>
+                ) : null}
 
                 {renderPickerOverlay()}
 
