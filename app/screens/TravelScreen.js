@@ -406,6 +406,13 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const toggleDropdown = (key) => {
+    if (key === 'price') {
+      handleSortOrderChange();
+      setOpenDropdown(null);
+      setAnchor(null);
+      return;
+    }
+
     if (openDropdown === key) {
       setOpenDropdown(null);
       setAnchor(null);
@@ -429,11 +436,6 @@ const TravelScreen = ({ navigation }) => {
     setAnchor(null);
   };
 
-  const getPriceTotal = (offer) => {
-    const amount = Number(offer?.price?.total);
-    return Number.isFinite(amount) ? amount : null;
-  };
-
   const filterOffersByOrigin = (offers, selectedOriginIata) => {
     const expectedOrigin = normalizeIataCode(selectedOriginIata, '');
     if (!expectedOrigin) return [];
@@ -450,12 +452,13 @@ const TravelScreen = ({ navigation }) => {
   const sortOffersByPrice = (offers, order) => {
     const normalizedOrder = order === 'desc' ? 'desc' : 'asc';
     const safeOffers = Array.isArray(offers) ? [...offers] : [];
+    const invalidFallback =
+      normalizedOrder === 'desc' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
     return safeOffers.sort((a, b) => {
-      const priceA = getPriceTotal(a);
-      const priceB = getPriceTotal(b);
-      if (priceA === null && priceB === null) return 0;
-      if (priceA === null) return 1;
-      if (priceB === null) return -1;
+      const rawPriceA = Number(a?.price?.total);
+      const rawPriceB = Number(b?.price?.total);
+      const priceA = Number.isFinite(rawPriceA) ? rawPriceA : invalidFallback;
+      const priceB = Number.isFinite(rawPriceB) ? rawPriceB : invalidFallback;
       if (priceA === priceB) return 0;
       return normalizedOrder === 'desc' ? priceB - priceA : priceA - priceB;
     });
@@ -636,7 +639,7 @@ const TravelScreen = ({ navigation }) => {
 
   const handleStopsChange = (nextStops) => {
     if (__DEV__) {
-      console.log('[UI] maxStops ->', nextStops);
+      console.log('[UI] maxStops changed', nextStops);
     }
     setMaxStops(nextStops);
     setDirtyFilters(false);
@@ -645,11 +648,14 @@ const TravelScreen = ({ navigation }) => {
     showBanner('info', 'Filtro scali applicato');
   };
 
-  const handleSortOrderChange = (nextOrder) => {
-    if (__DEV__) {
-      console.log('[UI] sortOrder ->', nextOrder);
-    }
-    setSortOrder(nextOrder);
+  const handleSortOrderChange = () => {
+    setSortOrder((prevOrder) => {
+      const nextOrder = prevOrder === 'asc' ? 'desc' : 'asc';
+      if (__DEV__) {
+        console.log('[UI] sortOrder changed', nextOrder);
+      }
+      return nextOrder;
+    });
     setDirtyFilters(false);
     setFormError('');
     setRequestError('');
@@ -699,10 +705,11 @@ const TravelScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
+    const transformed = applyTransforms(allResults, maxStops, sortOrder);
     if (__DEV__) {
-      console.log('[UI] visible recompute', { all: allResults.length, maxStops, sortOrder });
+      console.log('[UI] recompute visible', { all: allResults.length, maxStops, sortOrder, vis: transformed.length });
     }
-    setVisibleResults(applyTransforms(allResults, maxStops, sortOrder));
+    setVisibleResults(transformed);
   }, [allResults, maxStops, sortOrder]);
 
   useEffect(() => {
@@ -980,7 +987,6 @@ const TravelScreen = ({ navigation }) => {
 
   const isSearching = isFetching;
   const hasResults = !isSearching && visibleResults.length > 0;
-  const listData = isSearching ? [] : visibleResults;
   const bannerTypeStyle =
     banner.type === 'loading'
       ? styles.bannerLoading
@@ -1003,7 +1009,7 @@ const TravelScreen = ({ navigation }) => {
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             key={`flights-${listResetKey}`}
-            data={listData}
+            data={isFetching ? [] : visibleResults}
             extraData={{ isFetching, sortOrder, maxStops, listResetKey, visibleLen: visibleResults.length }}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderTrip}
