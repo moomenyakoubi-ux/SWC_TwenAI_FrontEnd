@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar } from 'react-native-calendars';
 import {
   ActivityIndicator,
@@ -48,6 +48,23 @@ const STATUS = {
   ERROR: 'error',
 };
 
+const DropdownTab = ({ label, value, isOpen, onPress, isRTL }) => (
+  <Pressable
+    onPress={onPress}
+    style={[styles.dropdownTab, isOpen && styles.dropdownTabOpen, isRTL && styles.dropdownTabRtl]}
+  >
+    <View style={[styles.dropdownTabContent, isRTL && styles.dropdownTabContentRtl]}>
+      <Text
+        style={[styles.dropdownTabText, isRTL && styles.rtlText]}
+        numberOfLines={1}
+      >
+        {label}: {value}
+      </Text>
+      <Text style={styles.dropdownTabIcon}>{isOpen ? '▲' : '▼'}</Text>
+    </View>
+  </Pressable>
+);
+
 const TravelScreen = ({ navigation }) => {
   const { strings, isRTL } = useLanguage();
   const isWeb = Platform.OS === 'web';
@@ -55,6 +72,8 @@ const TravelScreen = ({ navigation }) => {
   const travelStrings = strings.travel;
   const menuStrings = strings.menu;
   const sidebarTitle = strings.home?.greeting || travelStrings.title;
+  const overlayRef = useRef(null);
+  const tabsRowRef = useRef(null);
   const [departureCountry, setDepartureCountry] = useState('IT');
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
@@ -67,23 +86,41 @@ const TravelScreen = ({ navigation }) => {
   const [results, setResults] = useState([]);
   const [formError, setFormError] = useState('');
   const [requestError, setRequestError] = useState('');
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const [dropdownTop, setDropdownTop] = useState(0);
+  const [dirtyFilters, setDirtyFilters] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
   const destinationOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
 
   useEffect(() => {
-    setOriginIata(originOptions[0]?.value || '');
-    setDestinationIata(destinationOptions[0]?.value || '');
-  }, [departureCountry]);
+    const originValues = originOptions.map((option) => option.value);
+    const destinationValues = destinationOptions.map((option) => option.value);
+
+    if (!originValues.includes(originIata)) {
+      setOriginIata(originOptions[0]?.value || '');
+    }
+
+    if (!destinationValues.includes(destinationIata)) {
+      setDestinationIata(destinationOptions[0]?.value || '');
+    }
+
+    setOpenDropdown(null);
+  }, [departureCountry, originOptions, destinationOptions, originIata, destinationIata]);
 
   useEffect(() => {
     if (status === STATUS.LOADING) return;
-    setStatus(STATUS.IDLE);
-    setResults([]);
+    if (!results.length) {
+      setStatus(STATUS.IDLE);
+    }
     setFormError('');
     setRequestError('');
-  }, [departureCountry, originIata, destinationIata, departureDate, returnDate, maxStops, sortOrder]);
+    if (hasSearched) {
+      setDirtyFilters(true);
+    }
+  }, [departureCountry, originIata, destinationIata, departureDate, returnDate, maxStops, sortOrder, status, results.length, hasSearched]);
 
   const formatDate = (date) => {
     const day = String(date.getDate()).padStart(2, '0');
@@ -189,6 +226,34 @@ const TravelScreen = ({ navigation }) => {
     );
   };
 
+  const getOptionLabel = (options, value, fallback = '') => {
+    const match = options.find((option) => option.value === value);
+    return match?.label || fallback;
+  };
+
+  const measureDropdownTop = () => {
+    if (!tabsRowRef.current || !overlayRef.current) return;
+    tabsRowRef.current.measureInWindow((x, y, width, height) => {
+      overlayRef.current.measureInWindow((overlayX, overlayY) => {
+        const nextTop = y - overlayY + height + theme.spacing.xs;
+        setDropdownTop(Math.max(nextTop, 0));
+      });
+    });
+  };
+
+  const toggleDropdown = (key) => {
+    if (openDropdown === key) {
+      setOpenDropdown(null);
+      return;
+    }
+    setOpenDropdown(key);
+    requestAnimationFrame(measureDropdownTop);
+  };
+
+  const closeDropdown = () => {
+    setOpenDropdown(null);
+  };
+
   const requestPayload = useMemo(() => {
     return {
       originCountry: departureCountry,
@@ -231,6 +296,48 @@ const TravelScreen = ({ navigation }) => {
     { key: 'desc', value: 'desc', label: travelStrings.priceDesc },
   ];
 
+  const originValueLabel = getOptionLabel(originOptions, originIata, '--');
+  const destinationValueLabel = getOptionLabel(destinationOptions, destinationIata, '--');
+  const stopsValueLabel = getOptionLabel(stopsOptions, maxStops ?? null, travelStrings.anyStops);
+  const priceValueLabel = sortOrder === 'asc' ? '↑' : '↓';
+
+  const dropdownTabs = [
+    {
+      key: 'origin',
+      label: travelStrings.originTabLabel,
+      value: originValueLabel,
+      options: originOptions,
+      selectedValue: originIata,
+      onSelect: setOriginIata,
+    },
+    {
+      key: 'destination',
+      label: travelStrings.destinationTabLabel,
+      value: destinationValueLabel,
+      options: destinationOptions,
+      selectedValue: destinationIata,
+      onSelect: setDestinationIata,
+    },
+    {
+      key: 'stops',
+      label: travelStrings.stopsTabLabel,
+      value: stopsValueLabel,
+      options: stopsOptions,
+      selectedValue: maxStops ?? null,
+      onSelect: setMaxStops,
+    },
+    {
+      key: 'price',
+      label: travelStrings.priceTabLabel,
+      value: priceValueLabel,
+      options: sortOptions,
+      selectedValue: sortOrder,
+      onSelect: setSortOrder,
+    },
+  ];
+
+  const activeDropdown = dropdownTabs.find((tab) => tab.key === openDropdown) || null;
+
   const handleSearch = async () => {
     setFormError('');
     setRequestError('');
@@ -250,6 +357,9 @@ const TravelScreen = ({ navigation }) => {
     }
 
     console.log('[FlightSearchRequest]', requestPayload);
+    setHasSearched(true);
+    setDirtyFilters(false);
+    setOpenDropdown(null);
     setStatus(STATUS.LOADING);
 
     try {
@@ -333,6 +443,8 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const isSearching = status === STATUS.LOADING;
+  const hasResults = results.length > 0;
+  const listData = hasResults ? results : [];
 
   return (
     <ImageBackground
@@ -342,10 +454,10 @@ const TravelScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
+        <View ref={overlayRef} collapsable={false} style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
-            data={status === STATUS.SUCCESS ? results : []}
+            data={listData}
             keyExtractor={(item) => item.id}
             renderItem={renderTrip}
             contentContainerStyle={[styles.list, isWeb && styles.webList]}
@@ -357,11 +469,28 @@ const TravelScreen = ({ navigation }) => {
                 <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureCountryLabel}</Text>
                 {renderSegmentedControl(countryOptions, departureCountry, setDepartureCountry)}
 
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.originCityLabel}</Text>
-                {renderSegmentedControl(originOptions, originIata, setOriginIata)}
-
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.destinationCityLabel}</Text>
-                {renderSegmentedControl(destinationOptions, destinationIata, setDestinationIata)}
+                <View
+                  ref={tabsRowRef}
+                  collapsable={false}
+                  style={[styles.dropdownTabsWrapper, isRTL && styles.dropdownTabsWrapperRtl]}
+                >
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={[styles.dropdownTabsRow, isRTL && styles.dropdownTabsRowRtl]}
+                  >
+                    {dropdownTabs.map((tab) => (
+                      <DropdownTab
+                        key={tab.key}
+                        label={tab.label}
+                        value={tab.value}
+                        isOpen={openDropdown === tab.key}
+                        onPress={() => toggleDropdown(tab.key)}
+                        isRTL={isRTL}
+                      />
+                    ))}
+                  </ScrollView>
+                </View>
 
                 <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureDateLabel}</Text>
                 <TextInput
@@ -391,13 +520,11 @@ const TravelScreen = ({ navigation }) => {
 
                 {renderPickerOverlay()}
 
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.stopsLabel}</Text>
-                {renderSegmentedControl(stopsOptions, maxStops, setMaxStops)}
-
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.sortLabel}</Text>
-                {renderSegmentedControl(sortOptions, sortOrder, setSortOrder)}
-
                 <Text style={[styles.helper, isRTL && styles.rtlText]}>{travelStrings.filterHint}</Text>
+
+                {dirtyFilters ? (
+                  <Text style={[styles.dirtyHint, isRTL && styles.rtlText]}>{travelStrings.filtersDirtyHint}</Text>
+                ) : null}
 
                 {formError ? <Text style={[styles.formError, isRTL && styles.rtlText]}>{formError}</Text> : null}
 
@@ -412,9 +539,35 @@ const TravelScreen = ({ navigation }) => {
                 <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
               </View>
             }
-            ListEmptyComponent={renderStatusState}
+            ListEmptyComponent={!hasResults ? renderStatusState : null}
             showsVerticalScrollIndicator={false}
           />
+          {openDropdown && activeDropdown ? (
+            <View style={styles.dropdownLayer} pointerEvents="box-none">
+              <Pressable style={styles.dropdownBackdrop} onPress={closeDropdown} />
+              <View style={[styles.dropdownPanel, { top: dropdownTop }]}>
+                {activeDropdown.options.map((option) => {
+                  const isSelected = activeDropdown.selectedValue === option.value;
+                  return (
+                    <Pressable
+                      key={option.key || option.value}
+                      style={[styles.dropdownOption, isSelected && styles.dropdownOptionSelected]}
+                      onPress={() => {
+                        activeDropdown.onSelect(option.value);
+                        closeDropdown();
+                      }}
+                    >
+                      <Text
+                        style={[styles.dropdownOptionText, isSelected && styles.dropdownOptionTextSelected, isRTL && styles.rtlText]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
           <WebSidebar
             title={sidebarTitle}
             menuStrings={menuStrings}
@@ -437,6 +590,7 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    position: 'relative',
   },
   overlayWeb: {
     paddingLeft: WEB_TAB_BAR_WIDTH,
@@ -512,6 +666,54 @@ const styles = StyleSheet.create({
     color: theme.colors.card,
     fontWeight: '700',
   },
+  dropdownTabsWrapper: {
+    marginTop: theme.spacing.sm,
+  },
+  dropdownTabsWrapperRtl: {
+    alignItems: 'flex-end',
+  },
+  dropdownTabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xs,
+  },
+  dropdownTabsRowRtl: {
+    flexDirection: 'row-reverse',
+  },
+  dropdownTab: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginRight: theme.spacing.sm,
+    ...theme.shadow.card,
+  },
+  dropdownTabRtl: {
+    marginRight: 0,
+    marginLeft: theme.spacing.sm,
+  },
+  dropdownTabOpen: {
+    borderColor: theme.colors.primary,
+  },
+  dropdownTabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  dropdownTabContentRtl: {
+    flexDirection: 'row-reverse',
+  },
+  dropdownTabText: {
+    color: theme.colors.text,
+    fontWeight: '600',
+    maxWidth: 180,
+  },
+  dropdownTabIcon: {
+    color: theme.colors.muted,
+    fontSize: 12,
+  },
   input: {
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -528,6 +730,10 @@ const styles = StyleSheet.create({
   helper: {
     fontSize: 13,
     color: theme.colors.muted,
+  },
+  dirtyHint: {
+    fontSize: 13,
+    color: theme.colors.secondary,
   },
   formError: {
     fontSize: 13,
@@ -621,6 +827,44 @@ const styles = StyleSheet.create({
   retryLabel: {
     color: theme.colors.primary,
     fontWeight: '700',
+  },
+  dropdownLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 20,
+    elevation: 20,
+  },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  dropdownPanel: {
+    position: 'absolute',
+    left: theme.spacing.lg,
+    right: theme.spacing.lg,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: theme.spacing.xs,
+    ...theme.shadow.card,
+  },
+  dropdownOption: {
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.md,
+  },
+  dropdownOptionSelected: {
+    backgroundColor: 'rgba(231, 0, 19, 0.08)',
+  },
+  dropdownOptionText: {
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  dropdownOptionTextSelected: {
+    color: theme.colors.primary,
   },
   rtlText: {
     textAlign: 'right',
