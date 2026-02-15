@@ -16,7 +16,6 @@ import {
   View,
 } from 'react-native';
 import Navbar from '../components/Navbar';
-import Card from '../components/Card';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -145,11 +144,47 @@ const TravelScreen = ({ navigation }) => {
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   };
 
-  const formatIsoToDisplay = (value) => {
-    if (!value) return '';
-    const [year, month, day] = value.split('-');
-    if (!day || !month || !year) return value;
-    return `${day}-${month}-${year}`;
+  const formatTime = (iso) => {
+    if (!iso || typeof iso !== 'string') return '--';
+    const directMatch = iso.match(/T(\d{2}):(\d{2})/);
+    if (directMatch) {
+      return `${directMatch[1]}:${directMatch[2]}`;
+    }
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return '--';
+    const hours = String(parsed.getHours()).padStart(2, '0');
+    const minutes = String(parsed.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const formatDuration = (minutes) => {
+    const totalMinutes = Math.floor(Number(minutes));
+    if (!Number.isFinite(totalMinutes) || totalMinutes < 0) return '--';
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${mins}m`;
+  };
+
+  const formatStops = (value) => {
+    const stops = Math.floor(Number(value));
+    if (!Number.isFinite(stops) || stops < 0) return '--';
+    if (stops === 0) return 'Diretto';
+    if (stops === 1) return '1 scalo';
+    if (stops === 2) return '2 scali';
+    return '3+ scali';
+  };
+
+  const formatPrice = (priceObj) => {
+    if (!priceObj || typeof priceObj !== 'object') return '--';
+    const total = Number(priceObj.total);
+    const currency = typeof priceObj.currency === 'string' ? priceObj.currency.toUpperCase() : '';
+    if (!Number.isFinite(total) || !currency) return '--';
+    if (currency === 'EUR') {
+      return `${total.toFixed(2).replace('.', ',')} €`;
+    }
+    return `${total.toFixed(2)} ${currency}`;
   };
 
   const updateDate = (type, date) => {
@@ -428,22 +463,34 @@ const TravelScreen = ({ navigation }) => {
   );
 
   const renderTrip = ({ item }) => {
-    const firstSegment = item.segments?.[0];
-    const lastSegment = item.segments?.[item.segments.length - 1];
-    const origin = firstSegment?.fromIata || originIata;
-    const destination = lastSegment?.toIata || destinationIata;
-    const routeTitle = `${origin} → ${destination}`;
-    const subtitle = `${travelStrings.departingFrom} ${departureCountry === 'IT' ? travelStrings.italy : travelStrings.tunisia}`;
-    const descriptionLines = [
-      `${travelStrings.departureLabel}: ${item.outboundDate ? formatIsoToDisplay(item.outboundDate) : '--'}`,
-    ];
-    if (item.returnDate) {
-      descriptionLines.push(`${travelStrings.returnLabel}: ${formatIsoToDisplay(item.returnDate)}`);
-    }
-    descriptionLines.push(`${travelStrings.stopsLabel}: ${item.stops} • ${item.durationMinutes} min`);
-    const footer = `${item.price} ${item.currency}`;
+    const outboundSegments = Array.isArray(item?.outbound?.segments) ? item.outbound.segments : [];
+    const firstOutboundSegment = outboundSegments[0];
+    const lastOutboundSegment = outboundSegments[outboundSegments.length - 1];
+    const routeOrigin = firstOutboundSegment?.from || firstOutboundSegment?.fromIata || originIata || '--';
+    const routeDestination = lastOutboundSegment?.to || lastOutboundSegment?.toIata || destinationIata || '--';
 
-    return <Card title={routeTitle} subtitle={subtitle} description={descriptionLines.join('\n')} footer={footer} isRTL={isRTL} />;
+    const outboundTimes = `${formatTime(item?.outbound?.departure)} – ${formatTime(item?.outbound?.arrival)}`;
+    const outboundInfo = `${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
+    const formattedPrice = formatPrice(item?.price);
+
+    const hasInbound = Boolean(item?.inbound);
+    const inboundTimes = `${formatTime(item?.inbound?.departure)} – ${formatTime(item?.inbound?.arrival)}`;
+    const inboundInfo = `${formatStops(item?.inbound?.stops)} • Durata: ${formatDuration(item?.inbound?.durationMinutes)}`;
+
+    return (
+      <View style={styles.flightCard}>
+        <Text style={[styles.flightRouteTitle, isRTL && styles.rtlText]}>{`${routeOrigin} → ${routeDestination}`}</Text>
+        <Text style={[styles.flightTimes, isRTL && styles.rtlText]}>{outboundTimes}</Text>
+        <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundInfo}</Text>
+        <Text style={[styles.flightPrice, isRTL && styles.rtlText]}>{formattedPrice}</Text>
+        {hasInbound ? (
+          <View style={styles.returnBlock}>
+            <Text style={[styles.returnTitle, isRTL && styles.rtlText]}>{`Ritorno: ${inboundTimes}`}</Text>
+            <Text style={[styles.returnInfo, isRTL && styles.rtlText]}>{inboundInfo}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
   };
 
   const renderStatusState = () => {
@@ -490,7 +537,7 @@ const TravelScreen = ({ navigation }) => {
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             data={listData}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => String(item.id)}
             renderItem={renderTrip}
             contentContainerStyle={[styles.list, isWeb && styles.webList]}
             ListHeaderComponent={
@@ -889,6 +936,52 @@ const styles = StyleSheet.create({
   },
   dropdownOptionTextSelected: {
     color: theme.colors.primary,
+  },
+  flightCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    marginVertical: theme.spacing.sm,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadow.card,
+  },
+  flightRouteTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  flightTimes: {
+    fontSize: 16,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  flightInfo: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    lineHeight: 20,
+  },
+  flightPrice: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: theme.colors.primary,
+    marginTop: 2,
+  },
+  returnBlock: {
+    marginTop: theme.spacing.xs,
+    paddingTop: theme.spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    gap: 2,
+  },
+  returnTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  returnInfo: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    lineHeight: 20,
   },
   rtlText: {
     textAlign: 'right',
