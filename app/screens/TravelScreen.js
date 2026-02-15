@@ -130,8 +130,7 @@ const TravelScreen = ({ navigation }) => {
   const tabRefs = useRef({
     origin: React.createRef(),
     destination: React.createRef(),
-    stops: React.createRef(),
-    price: React.createRef(),
+    resultStops: React.createRef(),
   });
   const [departureCountry, setDepartureCountry] = useState('IT');
   const [departureDate, setDepartureDate] = useState('');
@@ -161,13 +160,6 @@ const TravelScreen = ({ navigation }) => {
   const destinationAirportOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
   const originOptions = buildAirportOptions(originAirportOptions);
   const destinationOptions = [ANY_OPTION, ...buildAirportOptions(destinationAirportOptions)];
-  const latestSearchContextRef = useRef({
-    originIata,
-    destinationIata,
-    departureDate,
-    returnDate,
-    tripType,
-  });
   const activeRequestIdRef = useRef(0);
   const previousNetworkFiltersRef = useRef({
     originIata,
@@ -177,16 +169,6 @@ const TravelScreen = ({ navigation }) => {
     tripType,
   });
   const pendingNetworkSearchRef = useRef(false);
-
-  useEffect(() => {
-    latestSearchContextRef.current = {
-      originIata,
-      destinationIata,
-      departureDate,
-      returnDate,
-      tripType,
-    };
-  }, [originIata, destinationIata, departureDate, returnDate, tripType]);
 
   useEffect(() => {
     const originValues = originOptions.map((option) => option.value);
@@ -406,13 +388,6 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const toggleDropdown = (key) => {
-    if (key === 'price') {
-      handleSortOrderChange();
-      setOpenDropdown(null);
-      setAnchor(null);
-      return;
-    }
-
     if (openDropdown === key) {
       setOpenDropdown(null);
       setAnchor(null);
@@ -436,25 +411,31 @@ const TravelScreen = ({ navigation }) => {
     setAnchor(null);
   };
 
-  const filterOffersByOrigin = (offers, selectedOriginIata) => {
-    const expectedOrigin = normalizeIataCode(selectedOriginIata, '');
-    if (!expectedOrigin) return [];
-    const safeOffers = Array.isArray(offers) ? [...offers] : [];
-    return safeOffers.filter((offer) => {
-      const outboundSegments = Array.isArray(offer?.outbound?.segments) ? offer.outbound.segments : [];
-      const firstOutboundSegment = outboundSegments[0];
-      if (!firstOutboundSegment) return false;
-      const offerOrigin = normalizeIataCode(firstOutboundSegment?.from || firstOutboundSegment?.fromIata, '');
-      return Boolean(offerOrigin) && offerOrigin === expectedOrigin;
-    });
-  };
+  const applyTransforms = (offers, nextMaxStops, nextSortOrder) => {
+    let arr = Array.isArray(offers) ? [...offers] : [];
 
-  const sortOffersByPrice = (offers, order) => {
-    const normalizedOrder = order === 'desc' ? 'desc' : 'asc';
-    const safeOffers = Array.isArray(offers) ? [...offers] : [];
+    if (nextMaxStops !== null && nextMaxStops !== undefined) {
+      const maxStopsValue = Number(nextMaxStops);
+      if (Number.isFinite(maxStopsValue)) {
+        arr = arr.filter((offer) => {
+          const outboundStops = Number(offer?.outbound?.stops);
+          if (!Number.isFinite(outboundStops) || outboundStops > maxStopsValue) {
+            return false;
+          }
+          if (!offer?.inbound) {
+            return true;
+          }
+          const inboundStops = Number(offer?.inbound?.stops);
+          return Number.isFinite(inboundStops) && inboundStops <= maxStopsValue;
+        });
+      }
+    }
+
+    const normalizedOrder = nextSortOrder === 'desc' ? 'desc' : 'asc';
     const invalidFallback =
       normalizedOrder === 'desc' ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-    return safeOffers.sort((a, b) => {
+
+    arr.sort((a, b) => {
       const rawPriceA = Number(a?.price?.total);
       const rawPriceB = Number(b?.price?.total);
       const priceA = Number.isFinite(rawPriceA) ? rawPriceA : invalidFallback;
@@ -462,35 +443,8 @@ const TravelScreen = ({ navigation }) => {
       if (priceA === priceB) return 0;
       return normalizedOrder === 'desc' ? priceB - priceA : priceA - priceB;
     });
-  };
 
-  const filterOffersByStops = (offers, maxStopsOrNull) => {
-    const safeOffers = Array.isArray(offers) ? [...offers] : [];
-    if (maxStopsOrNull === null || maxStopsOrNull === undefined) {
-      return safeOffers;
-    }
-
-    const maxStopsValue = Number(maxStopsOrNull);
-    if (!Number.isFinite(maxStopsValue)) {
-      return safeOffers;
-    }
-
-    return safeOffers.filter((offer) => {
-      const outboundStops = Number(offer?.outbound?.stops);
-      if (!Number.isFinite(outboundStops) || outboundStops > maxStopsValue) {
-        return false;
-      }
-      if (!offer?.inbound) {
-        return true;
-      }
-      const inboundStops = Number(offer?.inbound?.stops);
-      return Number.isFinite(inboundStops) && inboundStops <= maxStopsValue;
-    });
-  };
-
-  const applyTransforms = (offers, nextMaxStops, nextSortOrder) => {
-    const filteredOffers = filterOffersByStops(offers, nextMaxStops);
-    return sortOffersByPrice(filteredOffers, nextSortOrder);
+    return arr;
   };
 
   const buildRequestPayload = () => {
@@ -506,9 +460,7 @@ const TravelScreen = ({ navigation }) => {
       destinationIata: normalizedDestinationIata,
       departureDate: toIsoDate(departureDate),
       returnDate: tripType === 'roundtrip' && returnDate ? toIsoDate(returnDate) : null,
-      maxStops: maxStops ?? null,
-      sortBy: 'price',
-      sortOrder: sortOrder || 'asc',
+      tripType,
       adults: 1,
       currency: 'EUR',
     };
@@ -532,7 +484,8 @@ const TravelScreen = ({ navigation }) => {
   const buildFilterSummary = () => {
     const originLabel = getOptionLabel(originOptions, originIata, originOptions[0]?.label || '--');
     const destinationLabel = getOptionLabel(destinationOptions, destinationIata, destinationIata || ANY_OPTION.label);
-    const stopsLabel = maxStops === null ? ANY_OPTION.label : String(maxStops);
+    const stopsLabel =
+      maxStops === null ? 'Qualsiasi' : maxStops === 0 ? 'Diretto' : maxStops === 1 ? '≤1' : maxStops === 2 ? '≤2' : 'Qualsiasi';
     const priceDirection = sortOrder === 'desc' ? '↓' : '↑';
     const departureSummary = formatSummaryDate(departureDate);
     const returnSummary = tripType === 'roundtrip' ? formatSummaryDate(returnDate) : '--';
@@ -608,17 +561,11 @@ const TravelScreen = ({ navigation }) => {
         return;
       }
       const offers = Array.isArray(data) ? data : [];
-      const currentOriginIata = latestSearchContextRef.current.originIata || requestPayload.originIata;
-      const coherentOffers = filterOffersByOrigin(offers, currentOriginIata);
-      const discardedOffersCount = offers.length - coherentOffers.length;
-
-      setAllResults(coherentOffers);
+      setAllResults(offers);
       setHasSearched(true);
-      setStatus(coherentOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
+      setStatus(offers.length ? STATUS.SUCCESS : STATUS.EMPTY);
 
-      if (discardedOffersCount > 0) {
-        showBanner('error', 'Risultati non coerenti con la partenza selezionata. Riprova.');
-      } else if (!coherentOffers.length) {
+      if (!offers.length) {
         showBanner('info', travelStrings.emptyState);
       } else {
         showBanner('success', 'Risultati aggiornati');
@@ -639,7 +586,7 @@ const TravelScreen = ({ navigation }) => {
 
   const handleStopsChange = (nextStops) => {
     if (__DEV__) {
-      console.log('[UI] maxStops changed', nextStops);
+      console.log('[UI] maxStops ->', nextStops);
     }
     setMaxStops(nextStops);
     setDirtyFilters(false);
@@ -781,23 +728,18 @@ const TravelScreen = ({ navigation }) => {
   ];
 
   const stopsOptions = [
-    { key: 'any', value: null, label: travelStrings.anyStops },
-    { key: '0', value: 0, label: '0' },
-    { key: '1', value: 1, label: '1' },
-    { key: '2', value: 2, label: '2' },
-  ];
-
-  const sortOptions = [
-    { key: 'asc', value: 'asc', label: travelStrings.priceAsc },
-    { key: 'desc', value: 'desc', label: travelStrings.priceDesc },
+    { key: 'any', value: null, label: 'Qualsiasi' },
+    { key: '0', value: 0, label: 'Diretto' },
+    { key: '1', value: 1, label: '1 scalo' },
+    { key: '2', value: 2, label: '2 scali' },
   ];
 
   const originValueLabel = getOptionLabel(originOptions, originIata, originOptions[0]?.label || '--');
   const destinationValueLabel = getOptionLabel(destinationOptions, destinationIata, ANY_OPTION.label);
-  const stopsValueLabel = getOptionLabel(stopsOptions, maxStops ?? null, travelStrings.anyStops);
+  const stopsValueLabel = getOptionLabel(stopsOptions, maxStops ?? null, 'Qualsiasi');
   const priceValueLabel = sortOrder === 'asc' ? '↑' : '↓';
 
-  const dropdownTabs = [
+  const searchDropdownTabs = [
     {
       key: 'origin',
       label: travelStrings.originTabLabel,
@@ -814,25 +756,20 @@ const TravelScreen = ({ navigation }) => {
       selectedValue: destinationIata,
       onSelect: handleDestinationChange,
     },
-    {
-      key: 'stops',
-      label: travelStrings.stopsTabLabel,
-      value: stopsValueLabel,
-      options: stopsOptions,
-      selectedValue: maxStops ?? null,
-      onSelect: handleStopsChange,
-    },
-    {
-      key: 'price',
-      label: travelStrings.priceTabLabel,
-      value: priceValueLabel,
-      options: sortOptions,
-      selectedValue: sortOrder,
-      onSelect: handleSortOrderChange,
-    },
   ];
 
-  const activeDropdown = dropdownTabs.find((tab) => tab.key === openDropdown) || null;
+  const resultStopsDropdownTab = {
+    key: 'resultStops',
+    label: travelStrings.stopsTabLabel,
+    value: stopsValueLabel,
+    options: stopsOptions,
+    selectedValue: maxStops ?? null,
+    onSelect: handleStopsChange,
+  };
+
+  const allDropdownTabs = [...searchDropdownTabs, resultStopsDropdownTab];
+  const activeDropdown = allDropdownTabs.find((tab) => tab.key === openDropdown) || null;
+  const showResultFilters = hasSearched && !isFetching && allResults.length > 0;
   const windowDimensions = Dimensions.get('window');
   const dropdownRowHeight = 44;
   const dropdownPadding = theme.spacing.xs * 2;
@@ -1028,7 +965,7 @@ const TravelScreen = ({ navigation }) => {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={[styles.dropdownTabsRow, isRTL && styles.dropdownTabsRowRtl]}
                   >
-                    {dropdownTabs.map((tab) => (
+                    {searchDropdownTabs.map((tab) => (
                       <DropdownTab
                         key={tab.key}
                         label={tab.label}
@@ -1116,7 +1053,30 @@ const TravelScreen = ({ navigation }) => {
                   </View>
                 ) : null}
 
-                <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
+                <View style={[styles.resultsHeaderRow, isRTL && styles.resultsHeaderRowRtl]}>
+                  <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
+                  {showResultFilters ? (
+                    <View style={[styles.resultsFiltersRow, isRTL && styles.resultsFiltersRowRtl]}>
+                      <DropdownTab
+                        key={resultStopsDropdownTab.key}
+                        label={resultStopsDropdownTab.label}
+                        value={resultStopsDropdownTab.value}
+                        isOpen={openDropdown === resultStopsDropdownTab.key}
+                        onPress={() => toggleDropdown(resultStopsDropdownTab.key)}
+                        isRTL={isRTL}
+                        ref={tabRefs.current[resultStopsDropdownTab.key]}
+                      />
+                      <Pressable
+                        style={({ pressed }) => [styles.resultPriceTab, pressed && styles.pressedItem]}
+                        onPress={handleSortOrderChange}
+                      >
+                        <Text style={[styles.resultPriceTabText, isRTL && styles.rtlText]}>
+                          {`${travelStrings.priceTabLabel}: ${priceValueLabel}`}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </View>
               </View>
             }
             ListEmptyComponent={!hasResults ? renderStatusState : null}
@@ -1456,11 +1416,42 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     zIndex: 999,
   },
-  resultsTitle: {
+  resultsHeaderRow: {
     marginTop: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  resultsHeaderRowRtl: {
+    flexDirection: 'row-reverse',
+  },
+  resultsFiltersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  resultsFiltersRowRtl: {
+    flexDirection: 'row-reverse',
+  },
+  resultsTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: theme.colors.text,
+    flexShrink: 1,
+  },
+  resultPriceTab: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
+  },
+  resultPriceTabText: {
+    color: theme.colors.text,
+    fontWeight: '600',
   },
   emptyState: {
     marginTop: theme.spacing.lg,
