@@ -145,6 +145,7 @@ const TravelScreen = ({ navigation }) => {
   const [status, setStatus] = useState(STATUS.IDLE);
   const [allResults, setAllResults] = useState([]);
   const [visibleResults, setVisibleResults] = useState([]);
+  const [listResetKey, setListResetKey] = useState(0);
   const [isFetching, setIsFetching] = useState(false);
   const [formError, setFormError] = useState('');
   const [requestError, setRequestError] = useState('');
@@ -502,9 +503,9 @@ const TravelScreen = ({ navigation }) => {
       destinationIata: normalizedDestinationIata,
       departureDate: toIsoDate(departureDate),
       returnDate: tripType === 'roundtrip' && returnDate ? toIsoDate(returnDate) : null,
-      maxStops: null,
+      maxStops: maxStops ?? null,
       sortBy: 'price',
-      sortOrder: 'asc',
+      sortOrder: sortOrder || 'asc',
       adults: 1,
       currency: 'EUR',
     };
@@ -544,10 +545,12 @@ const TravelScreen = ({ navigation }) => {
     setActiveRequestId(reqId);
     setDirtyFilters(false);
     setOpenDropdown(null);
-    setStatus(STATUS.LOADING);
+    setAnchor(null);
     setIsFetching(true);
     pendingNetworkSearchRef.current = false;
     setAllResults([]);
+    setStatus(STATUS.LOADING);
+    setListResetKey((k) => k + 1);
     showBanner('loading', 'Aggiornamento risultati...');
 
     setFormError('');
@@ -632,6 +635,9 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const handleStopsChange = (nextStops) => {
+    if (__DEV__) {
+      console.log('[UI] maxStops ->', nextStops);
+    }
     setMaxStops(nextStops);
     setDirtyFilters(false);
     setFormError('');
@@ -640,6 +646,9 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const handleSortOrderChange = (nextOrder) => {
+    if (__DEV__) {
+      console.log('[UI] sortOrder ->', nextOrder);
+    }
     setSortOrder(nextOrder);
     setDirtyFilters(false);
     setFormError('');
@@ -690,6 +699,9 @@ const TravelScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
+    if (__DEV__) {
+      console.log('[UI] visible recompute', { all: allResults.length, maxStops, sortOrder });
+    }
     setVisibleResults(applyTransforms(allResults, maxStops, sortOrder));
   }, [allResults, maxStops, sortOrder]);
 
@@ -990,7 +1002,9 @@ const TravelScreen = ({ navigation }) => {
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
+            key={`flights-${listResetKey}`}
             data={listData}
+            extraData={{ isFetching, sortOrder, maxStops, listResetKey, visibleLen: visibleResults.length }}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderTrip}
             contentContainerStyle={[styles.list, isWeb && styles.webList]}
