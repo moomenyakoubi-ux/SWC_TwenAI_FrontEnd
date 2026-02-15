@@ -99,6 +99,9 @@ const STATUS = {
   ERROR: 'error',
 };
 
+const LOCAL_ONLY_FILTER_KEYS = ['sortOrder', 'maxStops'];
+const NETWORK_REQUIRED_FILTER_KEYS = ['originIata', 'destinationIata', 'departureDate', 'returnDate', 'tripType'];
+
 const DropdownTab = React.forwardRef(({ label, value, isOpen, onPress, isRTL }, ref) => (
   <Pressable
     ref={ref}
@@ -158,6 +161,31 @@ const TravelScreen = ({ navigation }) => {
   const destinationAirportOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
   const originOptions = buildAirportOptions(originAirportOptions);
   const destinationOptions = [ANY_OPTION, ...buildAirportOptions(destinationAirportOptions)];
+  const latestSearchContextRef = useRef({
+    originIata,
+    destinationIata,
+    departureDate,
+    returnDate,
+    tripType,
+  });
+
+  const isLocalOnlyOverride = (overrides = {}) => {
+    const overrideKeys = Object.keys(overrides);
+    return overrideKeys.length > 0 && overrideKeys.every((key) => LOCAL_ONLY_FILTER_KEYS.includes(key));
+  };
+
+  const hasNetworkRequiredOverride = (overrides = {}) =>
+    NETWORK_REQUIRED_FILTER_KEYS.some((key) => Object.prototype.hasOwnProperty.call(overrides, key));
+
+  useEffect(() => {
+    latestSearchContextRef.current = {
+      originIata,
+      destinationIata,
+      departureDate,
+      returnDate,
+      tripType,
+    };
+  }, [originIata, destinationIata, departureDate, returnDate, tripType]);
 
   useEffect(() => {
     const originValues = originOptions.map((option) => option.value);
@@ -295,10 +323,19 @@ const TravelScreen = ({ navigation }) => {
 
   const updateDate = (type, date) => {
     const formatted = formatDate(date);
+    const shouldAutoSearch = hasSearched && status !== STATUS.LOADING;
     if (type === 'departure') {
       setDepartureDate(formatted);
+      if (shouldAutoSearch) {
+        setVisibleResults([]);
+        void handleSearch({ departureDate: formatted }, { trigger: 'network' });
+      }
     } else {
       setReturnDate(formatted);
+      if (shouldAutoSearch && tripType === 'roundtrip') {
+        setVisibleResults([]);
+        void handleSearch({ returnDate: formatted }, { trigger: 'network' });
+      }
     }
   };
 
@@ -521,13 +558,21 @@ const TravelScreen = ({ navigation }) => {
     return `${originLabel} → ${destinationLabel} • Scali: ${stopsLabel} • Prezzo: ${priceDirection} • Date: ${departureSummary} – ${returnSummary}`;
   };
 
-  const handleSearch = async (overrides = {}) => {
+  const handleSearch = async (overrides = {}, options = {}) => {
+    const trigger = options?.trigger || 'button';
     if (status === STATUS.LOADING) return;
 
     const nextDepartureDate = overrides.departureDate ?? departureDate;
     const nextReturnDate = overrides.returnDate ?? returnDate;
     const nextTripType = overrides.tripType ?? tripType;
     const requestPayload = buildRequestPayload(overrides);
+    const hasNetworkChanges = hasNetworkRequiredOverride(overrides);
+    const hasOnlyLocalChanges = isLocalOnlyOverride(overrides);
+    const shouldResetExistingResults =
+      trigger === 'button' ||
+      trigger === 'network' ||
+      hasNetworkChanges ||
+      (Object.keys(overrides).length > 0 && !hasOnlyLocalChanges);
 
     setFormError('');
     setRequestError('');
@@ -566,6 +611,10 @@ const TravelScreen = ({ navigation }) => {
     setDirtyFilters(false);
     setOpenDropdown(null);
     setStatus(STATUS.LOADING);
+    if (shouldResetExistingResults) {
+      setAllResults([]);
+      setVisibleResults([]);
+    }
     showBanner('loading', 'Aggiornamento risultati...');
 
     try {
@@ -574,8 +623,18 @@ const TravelScreen = ({ navigation }) => {
         console.log('[FlightSearchQueryHash]', data.queryHash);
       }
       const offers = Array.isArray(data) ? data : [];
-      setAllResults(offers);
-      showBanner('success', 'Risultati aggiornati');
+      const currentOriginIata = latestSearchContextRef.current.originIata || requestPayload.originIata;
+      const coherentOffers = filterOffersByOrigin(offers, currentOriginIata);
+      const discardedOffersCount = offers.length - coherentOffers.length;
+
+      setAllResults(coherentOffers);
+      setStatus(coherentOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
+
+      if (discardedOffersCount > 0) {
+        showBanner('error', 'Risultati non coerenti con la partenza selezionata. Riprova.');
+      } else {
+        showBanner('success', 'Risultati aggiornati');
+      }
     } catch (error) {
       setRequestError(error?.message || travelStrings.errorState);
       setStatus(STATUS.ERROR);
@@ -607,10 +666,10 @@ const TravelScreen = ({ navigation }) => {
     setFormError('');
     setRequestError('');
     const selectedOrigin = getOptionLabel(originOptions, normalizedOriginIata, originOptions[0]?.label || '--');
-    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+    const shouldAutoSearch = hasSearched && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
-      showBanner('loading', 'Aggiornamento risultati...');
-      void handleSearch({ originIata: normalizedOriginIata });
+      setVisibleResults([]);
+      void handleSearch({ originIata: normalizedOriginIata }, { trigger: 'network' });
       return;
     }
     showBanner('info', `Partenza aggiornata: ${selectedOrigin}`);
@@ -627,10 +686,10 @@ const TravelScreen = ({ navigation }) => {
       normalizedDestinationIata,
       normalizedDestinationIata || '--',
     );
-    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+    const shouldAutoSearch = hasSearched && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
-      showBanner('loading', 'Aggiornamento risultati...');
-      void handleSearch({ destinationIata: normalizedDestinationIata });
+      setVisibleResults([]);
+      void handleSearch({ destinationIata: normalizedDestinationIata }, { trigger: 'network' });
       return;
     }
     showBanner('info', `Arrivo aggiornato: ${selectedDestination}`);
@@ -642,7 +701,7 @@ const TravelScreen = ({ navigation }) => {
     setFormError('');
     setRequestError('');
 
-    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+    const shouldAutoSearch = hasSearched && status !== STATUS.LOADING;
 
     if (nextTripType === 'oneway') {
       if (returnDate !== null) {
@@ -650,7 +709,8 @@ const TravelScreen = ({ navigation }) => {
       }
       showBanner('info', 'Modalita: solo andata');
       if (shouldAutoSearch) {
-        void handleSearch({ tripType: 'oneway', returnDate: null });
+        setVisibleResults([]);
+        void handleSearch({ tripType: 'oneway', returnDate: null }, { trigger: 'network' });
       }
       return;
     }
@@ -679,18 +739,19 @@ const TravelScreen = ({ navigation }) => {
       return;
     }
 
-    void handleSearch({ tripType: 'roundtrip' });
+    setVisibleResults([]);
+    void handleSearch({ tripType: 'roundtrip' }, { trigger: 'network' });
   };
 
   useEffect(() => {
     const transformedOffers = applyTransforms(allResults, originIata, maxStops, sortOrder);
     setVisibleResults(transformedOffers);
     setStatus((prevStatus) => {
-      if (prevStatus === STATUS.ERROR) return prevStatus;
-      if (prevStatus === STATUS.IDLE && !allResults.length) return prevStatus;
+      if (prevStatus === STATUS.ERROR || prevStatus === STATUS.LOADING) return prevStatus;
+      if (!hasSearched && !allResults.length) return STATUS.IDLE;
       return transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY;
     });
-  }, [allResults, originIata, maxStops, sortOrder]);
+  }, [allResults, originIata, maxStops, sortOrder, hasSearched]);
 
   const countryOptions = [
     { value: 'TN', label: travelStrings.tunisia },
@@ -893,7 +954,7 @@ const TravelScreen = ({ navigation }) => {
       return (
         <View style={styles.statusContainer}>
           <Text style={[styles.statusText, isRTL && styles.rtlText]}>{requestError || travelStrings.errorState}</Text>
-          <Pressable style={styles.retryButton} onPress={handleSearch}>
+          <Pressable style={styles.retryButton} onPress={() => void handleSearch({}, { trigger: 'button' })}>
             <Text style={styles.retryLabel}>{travelStrings.retryLabel}</Text>
           </Pressable>
         </View>
@@ -908,8 +969,8 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const isSearching = status === STATUS.LOADING;
-  const hasResults = visibleResults.length > 0;
-  const listData = hasResults ? visibleResults : [];
+  const hasResults = !isSearching && visibleResults.length > 0;
+  const listData = isSearching ? [] : visibleResults;
   const bannerTypeStyle =
     banner.type === 'loading'
       ? styles.bannerLoading
@@ -1008,7 +1069,7 @@ const TravelScreen = ({ navigation }) => {
 
                 <Pressable
                   style={[styles.searchButton, isSearching && styles.searchButtonDisabled]}
-                  onPress={handleSearch}
+                  onPress={() => void handleSearch({}, { trigger: 'button' })}
                   disabled={isSearching}
                 >
                   <Text style={styles.searchLabel}>{travelStrings.searchButton}</Text>
@@ -1029,7 +1090,7 @@ const TravelScreen = ({ navigation }) => {
                     {banner.type === 'error' ? (
                       <Pressable
                         style={({ pressed }) => [styles.bannerRetryButton, pressed && styles.pressedItem]}
-                        onPress={handleSearch}
+                        onPress={() => void handleSearch({}, { trigger: 'button' })}
                       >
                         <Text style={styles.bannerRetryLabel}>{travelStrings.retryLabel || 'Riprova'}</Text>
                       </Pressable>
