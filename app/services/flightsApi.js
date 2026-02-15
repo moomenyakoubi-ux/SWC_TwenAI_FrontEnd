@@ -40,7 +40,50 @@
  * @returns {Promise<FlightOffer[]>}
  */
 export const searchFlights = async (request) => {
-  // Backend hook: replace with API call to /api/flights/search-country
-  void request;
-  return [];
+  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('Flight search failed: EXPO_PUBLIC_API_BASE_URL is not set.');
+  }
+
+  const response = await fetch(`${baseUrl}/api/flights/search-country`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    let details = '';
+
+    try {
+      if (contentType.includes('application/json')) {
+        const errorJson = await response.json();
+        details = errorJson?.message || errorJson?.error || JSON.stringify(errorJson);
+      } else {
+        details = await response.text();
+      }
+    } catch (_parseError) {
+      details = '';
+    }
+
+    const statusInfo = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+    const errorMessage = details
+      ? `Flight search failed (${statusInfo}): ${details}`
+      : `Flight search failed (${statusInfo}).`;
+    throw new Error(errorMessage);
+  }
+
+  const json = await response.json();
+  const offers = Array.isArray(json?.offers) ? json.offers : [];
+  if (json?.queryHash) {
+    Object.defineProperty(offers, 'queryHash', {
+      value: json.queryHash,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
+  return offers;
 };

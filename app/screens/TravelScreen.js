@@ -393,6 +393,9 @@ const TravelScreen = ({ navigation }) => {
 
     try {
       const data = await searchFlights(requestPayload);
+      if (__DEV__ && data?.queryHash) {
+        console.log('[FlightSearchQueryHash]', data.queryHash);
+      }
       setResults(data || []);
       setStatus((data || []).length ? STATUS.SUCCESS : STATUS.EMPTY);
     } catch (error) {
