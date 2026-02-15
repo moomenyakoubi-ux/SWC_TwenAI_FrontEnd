@@ -40,6 +40,19 @@ const AIRPORTS_BY_COUNTRY = {
   ],
 };
 
+const CARRIER_NAMES = {
+  TU: 'Tunisair',
+  AF: 'Air France',
+  AZ: 'ITA Airways',
+  A3: 'Aegean Airlines',
+  FR: 'Ryanair',
+  U2: 'easyJet',
+  KL: 'KLM',
+  LH: 'Lufthansa',
+  OS: 'Austrian',
+  SN: 'Brussels Airlines',
+};
+
 const STATUS = {
   IDLE: 'idle',
   LOADING: 'loading',
@@ -185,6 +198,48 @@ const TravelScreen = ({ navigation }) => {
       return `${total.toFixed(2).replace('.', ',')} €`;
     }
     return `${total.toFixed(2)} ${currency}`;
+  };
+
+  const normalizeCarrierCode = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().toUpperCase();
+  };
+
+  const getCarrierCodes = (offer) => {
+    const addUniqueCode = (targetSet, codeValue) => {
+      const code = normalizeCarrierCode(codeValue);
+      if (code) {
+        targetSet.add(code);
+      }
+    };
+
+    const metaCarriers = Array.isArray(offer?.meta?.carriers) ? offer.meta.carriers : [];
+    const metaCodes = new Set();
+    metaCarriers.forEach((code) => addUniqueCode(metaCodes, code));
+    if (metaCodes.size > 0) {
+      return Array.from(metaCodes);
+    }
+
+    const segmentCodes = new Set();
+    const outboundSegments = Array.isArray(offer?.outbound?.segments) ? offer.outbound.segments : [];
+    const inboundSegments = Array.isArray(offer?.inbound?.segments) ? offer.inbound.segments : [];
+    [...outboundSegments, ...inboundSegments].forEach((segment) => addUniqueCode(segmentCodes, segment?.carrier));
+    return Array.from(segmentCodes);
+  };
+
+  const formatCarrierLabel = (offer) => {
+    const carrierCodes = getCarrierCodes(offer);
+    if (!carrierCodes.length) return 'Compagnia: --';
+
+    const visibleCodes = carrierCodes.slice(0, 3);
+    const visibleCarriers = visibleCodes.map((code) => {
+      const carrierName = CARRIER_NAMES[code];
+      return carrierName ? `${carrierName} (${code})` : code;
+    });
+
+    const prefix = carrierCodes.length === 1 ? 'Compagnia' : 'Compagnie';
+    const suffix = carrierCodes.length > 3 ? ', …' : '';
+    return `${prefix}: ${visibleCarriers.join(', ')}${suffix}`;
   };
 
   const updateDate = (type, date) => {
@@ -470,6 +525,7 @@ const TravelScreen = ({ navigation }) => {
     const routeDestination = lastOutboundSegment?.to || lastOutboundSegment?.toIata || destinationIata || '--';
 
     const outboundTimes = `${formatTime(item?.outbound?.departure)} – ${formatTime(item?.outbound?.arrival)}`;
+    const carrierLabel = formatCarrierLabel(item);
     const outboundInfo = `${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
     const formattedPrice = formatPrice(item?.price);
 
@@ -481,6 +537,7 @@ const TravelScreen = ({ navigation }) => {
       <View style={styles.flightCard}>
         <Text style={[styles.flightRouteTitle, isRTL && styles.rtlText]}>{`${routeOrigin} → ${routeDestination}`}</Text>
         <Text style={[styles.flightTimes, isRTL && styles.rtlText]}>{outboundTimes}</Text>
+        <Text style={[styles.carrierInfo, isRTL && styles.rtlText]}>{carrierLabel}</Text>
         <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundInfo}</Text>
         <Text style={[styles.flightPrice, isRTL && styles.rtlText]}>{formattedPrice}</Text>
         {hasInbound ? (
@@ -956,6 +1013,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   flightInfo: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    lineHeight: 20,
+  },
+  carrierInfo: {
     fontSize: 14,
     color: theme.colors.muted,
     lineHeight: 20,
