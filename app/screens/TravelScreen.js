@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Calendar } from 'react-native-calendars';
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   FlatList,
   ImageBackground,
@@ -66,7 +67,12 @@ const DropdownTab = React.forwardRef(({ label, value, isOpen, onPress, isRTL }, 
     ref={ref}
     collapsable={false}
     onPress={onPress}
-    style={[styles.dropdownTab, isOpen && styles.dropdownTabOpen, isRTL && styles.dropdownTabRtl]}
+    style={({ pressed }) => [
+      styles.dropdownTab,
+      isOpen && styles.dropdownTabOpen,
+      isRTL && styles.dropdownTabRtl,
+      pressed && styles.pressedItem,
+    ]}
   >
     <View style={[styles.dropdownTabContent, isRTL && styles.dropdownTabContentRtl]}>
       <Text style={[styles.dropdownTabText, isRTL && styles.rtlText]} numberOfLines={1}>
@@ -99,13 +105,17 @@ const TravelScreen = ({ navigation }) => {
   const [maxStops, setMaxStops] = useState(null);
   const [sortOrder, setSortOrder] = useState('asc');
   const [status, setStatus] = useState(STATUS.IDLE);
-  const [results, setResults] = useState([]);
+  const [allResults, setAllResults] = useState([]);
+  const [visibleResults, setVisibleResults] = useState([]);
   const [formError, setFormError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [openDropdown, setOpenDropdown] = useState(null);
   const [anchor, setAnchor] = useState(null);
   const [dirtyFilters, setDirtyFilters] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimeoutRef = useRef(null);
 
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
@@ -127,16 +137,19 @@ const TravelScreen = ({ navigation }) => {
   }, [departureCountry, originOptions, destinationOptions, originIata, destinationIata]);
 
   useEffect(() => {
-    if (status === STATUS.LOADING) return;
-    if (!results.length) {
-      setStatus(STATUS.IDLE);
-    }
+    if (!hasSearched || status === STATUS.LOADING) return;
     setFormError('');
     setRequestError('');
-    if (hasSearched) {
-      setDirtyFilters(true);
-    }
-  }, [departureCountry, originIata, destinationIata, departureDate, returnDate, maxStops, sortOrder, status, results.length, hasSearched]);
+    setDirtyFilters(true);
+  }, [departureCountry, departureDate, returnDate, hasSearched]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const formatDate = (date) => {
     const day = String(date.getDate()).padStart(2, '0');
@@ -357,30 +370,201 @@ const TravelScreen = ({ navigation }) => {
     setAnchor(null);
   };
 
-  const requestPayload = useMemo(() => {
+  const getPriceTotal = (offer) => {
+    const amount = Number(offer?.price?.total);
+    return Number.isFinite(amount) ? amount : null;
+  };
+
+  const sortOffersByPrice = (offers, order) => {
+    const safeOffers = Array.isArray(offers) ? [...offers] : [];
+    return safeOffers.sort((a, b) => {
+      const priceA = getPriceTotal(a);
+      const priceB = getPriceTotal(b);
+      if (priceA === null && priceB === null) return 0;
+      if (priceA === null) return 1;
+      if (priceB === null) return -1;
+      if (priceA === priceB) return 0;
+      return order === 'desc' ? priceB - priceA : priceA - priceB;
+    });
+  };
+
+  const filterOffersByStops = (offers, maxStopsOrNull) => {
+    const safeOffers = Array.isArray(offers) ? [...offers] : [];
+    if (maxStopsOrNull === null || maxStopsOrNull === undefined) {
+      return safeOffers;
+    }
+
+    const maxStopsValue = Number(maxStopsOrNull);
+    if (!Number.isFinite(maxStopsValue)) {
+      return safeOffers;
+    }
+
+    return safeOffers.filter((offer) => {
+      const outboundStops = Number(offer?.outbound?.stops);
+      if (!Number.isFinite(outboundStops) || outboundStops > maxStopsValue) {
+        return false;
+      }
+      if (!offer?.inbound) {
+        return true;
+      }
+      const inboundStops = Number(offer?.inbound?.stops);
+      return Number.isFinite(inboundStops) && inboundStops <= maxStopsValue;
+    });
+  };
+
+  const applyClientTransforms = (offers, nextMaxStops, nextSortOrder) => {
+    const filteredOffers = filterOffersByStops(offers, nextMaxStops);
+    return sortOffersByPrice(filteredOffers, nextSortOrder);
+  };
+
+  const buildRequestPayload = (overrides = {}) => {
+    const nextDepartureCountry = overrides.departureCountry ?? departureCountry;
+    const nextDestinationCountry = overrides.destinationCountry ?? (nextDepartureCountry === 'IT' ? 'TN' : 'IT');
+    const nextDepartureDate = overrides.departureDate ?? departureDate;
+    const nextReturnDate = overrides.returnDate ?? returnDate;
+    const nextMaxStops = overrides.maxStops ?? maxStops;
+    const nextSortOrder = overrides.sortOrder ?? sortOrder;
+
     return {
-      originCountry: departureCountry,
-      originIata,
-      destinationCountry,
-      destinationIata,
-      departureDate: toIsoDate(departureDate),
-      returnDate: returnDate ? toIsoDate(returnDate) : null,
-      maxStops: maxStops ?? null,
+      originCountry: nextDepartureCountry,
+      originIata: overrides.originIata ?? originIata,
+      destinationCountry: nextDestinationCountry,
+      destinationIata: overrides.destinationIata ?? destinationIata,
+      departureDate: toIsoDate(nextDepartureDate),
+      returnDate: nextReturnDate ? toIsoDate(nextReturnDate) : null,
+      maxStops: nextMaxStops ?? null,
       sortBy: 'price',
-      sortOrder,
+      sortOrder: nextSortOrder,
       adults: 1,
       currency: 'EUR',
     };
-  }, [
-    departureCountry,
-    destinationCountry,
-    originIata,
-    destinationIata,
-    departureDate,
-    returnDate,
-    maxStops,
-    sortOrder,
-  ]);
+  };
+
+  const showToast = (message) => {
+    if (!message) return;
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastOpacity.stopAnimation();
+    setToastMessage(message);
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      toastTimeoutRef.current = setTimeout(() => {
+        Animated.timing(toastOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) {
+            setToastMessage('');
+          }
+        });
+      }, 900);
+    });
+  };
+
+  const handleSearch = async (overrides = {}) => {
+    if (status === STATUS.LOADING) return;
+
+    const nextDepartureDate = overrides.departureDate ?? departureDate;
+    const nextReturnDate = overrides.returnDate ?? returnDate;
+    const requestPayload = buildRequestPayload(overrides);
+
+    setFormError('');
+    setRequestError('');
+
+    if (!nextDepartureDate) {
+      setFormError(travelStrings.departureDateRequired);
+      return;
+    }
+
+    if (nextReturnDate) {
+      const departureValue = parseDateString(nextDepartureDate);
+      const returnValue = parseDateString(nextReturnDate);
+      if (returnValue < departureValue) {
+        setFormError(travelStrings.returnBeforeDeparture);
+        return;
+      }
+    }
+
+    console.log('[FlightSearchRequest]', requestPayload);
+    setHasSearched(true);
+    setDirtyFilters(false);
+    setOpenDropdown(null);
+    setStatus(STATUS.LOADING);
+
+    try {
+      const data = await searchFlights(requestPayload);
+      if (__DEV__ && data?.queryHash) {
+        console.log('[FlightSearchQueryHash]', data.queryHash);
+      }
+      const offers = Array.isArray(data) ? data : [];
+      const transformedOffers = applyClientTransforms(offers, requestPayload.maxStops, requestPayload.sortOrder);
+      setAllResults(offers);
+      setVisibleResults(transformedOffers);
+      setStatus(transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
+    } catch (error) {
+      setRequestError(error?.message || travelStrings.errorState);
+      setStatus(STATUS.ERROR);
+    }
+  };
+
+  const handleStopsChange = (nextStops) => {
+    setMaxStops(nextStops);
+    setDirtyFilters(false);
+    setFormError('');
+    setRequestError('');
+    showToast(`Filtro scali: ${nextStops === null ? 'Qualsiasi' : nextStops}`);
+  };
+
+  const handleSortOrderChange = (nextOrder) => {
+    setSortOrder(nextOrder);
+    setDirtyFilters(false);
+    setFormError('');
+    setRequestError('');
+    showToast(`Ordinato per prezzo: ${nextOrder === 'desc' ? '↓' : '↑'}`);
+  };
+
+  const handleOriginChange = (nextOriginIata) => {
+    if (nextOriginIata === originIata) return;
+    setOriginIata(nextOriginIata);
+    setFormError('');
+    setRequestError('');
+    const selectedOrigin = getOptionLabel(originOptions, nextOriginIata, nextOriginIata || '--');
+    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+    if (shouldAutoSearch) {
+      showToast(`Partenza: ${selectedOrigin} - aggiornamento...`);
+      void handleSearch({ originIata: nextOriginIata });
+      return;
+    }
+    showToast(`Partenza: ${selectedOrigin} - selezione aggiornata`);
+  };
+
+  const handleDestinationChange = (nextDestinationIata) => {
+    if (nextDestinationIata === destinationIata) return;
+    setDestinationIata(nextDestinationIata);
+    setFormError('');
+    setRequestError('');
+    const selectedDestination = getOptionLabel(destinationOptions, nextDestinationIata, nextDestinationIata || '--');
+    const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
+    if (shouldAutoSearch) {
+      showToast(`Arrivo: ${selectedDestination} - aggiornamento...`);
+      void handleSearch({ destinationIata: nextDestinationIata });
+      return;
+    }
+    showToast(`Arrivo: ${selectedDestination} - selezione aggiornata`);
+  };
+
+  useEffect(() => {
+    if (status === STATUS.LOADING || status === STATUS.ERROR) return;
+    if (!hasSearched && !allResults.length) return;
+    const transformedOffers = applyClientTransforms(allResults, maxStops, sortOrder);
+    setVisibleResults(transformedOffers);
+    setStatus(transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
+  }, [allResults, hasSearched, maxStops, sortOrder, status]);
 
   const countryOptions = [
     { value: 'TN', label: travelStrings.tunisia },
@@ -411,7 +595,7 @@ const TravelScreen = ({ navigation }) => {
       value: originValueLabel,
       options: originOptions,
       selectedValue: originIata,
-      onSelect: setOriginIata,
+      onSelect: handleOriginChange,
     },
     {
       key: 'destination',
@@ -419,7 +603,7 @@ const TravelScreen = ({ navigation }) => {
       value: destinationValueLabel,
       options: destinationOptions,
       selectedValue: destinationIata,
-      onSelect: setDestinationIata,
+      onSelect: handleDestinationChange,
     },
     {
       key: 'stops',
@@ -427,7 +611,7 @@ const TravelScreen = ({ navigation }) => {
       value: stopsValueLabel,
       options: stopsOptions,
       selectedValue: maxStops ?? null,
-      onSelect: setMaxStops,
+      onSelect: handleStopsChange,
     },
     {
       key: 'price',
@@ -435,7 +619,7 @@ const TravelScreen = ({ navigation }) => {
       value: priceValueLabel,
       options: sortOptions,
       selectedValue: sortOrder,
-      onSelect: setSortOrder,
+      onSelect: handleSortOrderChange,
     },
   ];
 
@@ -465,43 +649,6 @@ const TravelScreen = ({ navigation }) => {
     };
   };
 
-  const handleSearch = async () => {
-    setFormError('');
-    setRequestError('');
-
-    if (!departureDate) {
-      setFormError(travelStrings.departureDateRequired);
-      return;
-    }
-
-    if (returnDate) {
-      const departureValue = parseDateString(departureDate);
-      const returnValue = parseDateString(returnDate);
-      if (returnValue < departureValue) {
-        setFormError(travelStrings.returnBeforeDeparture);
-        return;
-      }
-    }
-
-    console.log('[FlightSearchRequest]', requestPayload);
-    setHasSearched(true);
-    setDirtyFilters(false);
-    setOpenDropdown(null);
-    setStatus(STATUS.LOADING);
-
-    try {
-      const data = await searchFlights(requestPayload);
-      if (__DEV__ && data?.queryHash) {
-        console.log('[FlightSearchQueryHash]', data.queryHash);
-      }
-      setResults(data || []);
-      setStatus((data || []).length ? STATUS.SUCCESS : STATUS.EMPTY);
-    } catch (error) {
-      setRequestError(error?.message || travelStrings.errorState);
-      setStatus(STATUS.ERROR);
-    }
-  };
-
   const renderSegmentedControl = (options, selectedValue, onSelect) => (
     <ScrollView
       horizontal
@@ -514,7 +661,12 @@ const TravelScreen = ({ navigation }) => {
           <Pressable
             key={option.key || option.value}
             onPress={() => onSelect(option.value)}
-            style={[styles.segment, isSelected && styles.segmentSelected, isRTL && styles.segmentRtl]}
+            style={({ pressed }) => [
+              styles.segment,
+              isSelected && styles.segmentSelected,
+              isRTL && styles.segmentRtl,
+              pressed && styles.pressedItem,
+            ]}
           >
             <Text style={[styles.segmentLabel, isSelected && styles.segmentLabelSelected, isRTL && styles.rtlText]}>
               {option.label}
@@ -592,8 +744,8 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const isSearching = status === STATUS.LOADING;
-  const hasResults = results.length > 0;
-  const listData = hasResults ? results : [];
+  const hasResults = visibleResults.length > 0;
+  const listData = hasResults ? visibleResults : [];
 
   return (
     <ImageBackground
@@ -682,6 +834,12 @@ const TravelScreen = ({ navigation }) => {
                   <Text style={styles.searchLabel}>{travelStrings.searchButton}</Text>
                 </Pressable>
 
+                {toastMessage ? (
+                  <Animated.View style={[styles.toastBanner, { opacity: toastOpacity }]}>
+                    <Text style={[styles.toastBannerText, isRTL && styles.rtlText]}>{toastMessage}</Text>
+                  </Animated.View>
+                ) : null}
+
                 <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
               </View>
             }
@@ -697,7 +855,11 @@ const TravelScreen = ({ navigation }) => {
                   return (
                     <Pressable
                       key={option.key || option.value}
-                      style={[styles.dropdownOption, isSelected && styles.dropdownOptionSelected]}
+                      style={({ pressed }) => [
+                        styles.dropdownOption,
+                        isSelected && styles.dropdownOptionSelected,
+                        pressed && styles.pressedItem,
+                      ]}
                       onPress={() => {
                         activeDropdown.onSelect(option.value);
                         closeDropdown();
@@ -900,6 +1062,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
+  toastBanner: {
+    alignSelf: 'flex-start',
+    marginTop: theme.spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
+  },
+  toastBannerText: {
+    fontSize: 13,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -1052,6 +1230,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.muted,
     lineHeight: 20,
+  },
+  pressedItem: {
+    opacity: 0.85,
   },
   rtlText: {
     textAlign: 'right',
