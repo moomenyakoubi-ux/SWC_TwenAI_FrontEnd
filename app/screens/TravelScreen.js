@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar } from 'react-native-calendars';
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   ImageBackground,
   Modal,
@@ -48,22 +49,21 @@ const STATUS = {
   ERROR: 'error',
 };
 
-const DropdownTab = ({ label, value, isOpen, onPress, isRTL }) => (
+const DropdownTab = React.forwardRef(({ label, value, isOpen, onPress, isRTL }, ref) => (
   <Pressable
+    ref={ref}
+    collapsable={false}
     onPress={onPress}
     style={[styles.dropdownTab, isOpen && styles.dropdownTabOpen, isRTL && styles.dropdownTabRtl]}
   >
     <View style={[styles.dropdownTabContent, isRTL && styles.dropdownTabContentRtl]}>
-      <Text
-        style={[styles.dropdownTabText, isRTL && styles.rtlText]}
-        numberOfLines={1}
-      >
+      <Text style={[styles.dropdownTabText, isRTL && styles.rtlText]} numberOfLines={1}>
         {label}: {value}
       </Text>
       <Text style={styles.dropdownTabIcon}>{isOpen ? '▲' : '▼'}</Text>
     </View>
   </Pressable>
-);
+));
 
 const TravelScreen = ({ navigation }) => {
   const { strings, isRTL } = useLanguage();
@@ -72,8 +72,12 @@ const TravelScreen = ({ navigation }) => {
   const travelStrings = strings.travel;
   const menuStrings = strings.menu;
   const sidebarTitle = strings.home?.greeting || travelStrings.title;
-  const overlayRef = useRef(null);
-  const tabsRowRef = useRef(null);
+  const tabRefs = useRef({
+    origin: React.createRef(),
+    destination: React.createRef(),
+    stops: React.createRef(),
+    price: React.createRef(),
+  });
   const [departureCountry, setDepartureCountry] = useState('IT');
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
@@ -87,7 +91,7 @@ const TravelScreen = ({ navigation }) => {
   const [formError, setFormError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [openDropdown, setOpenDropdown] = useState(null);
-  const [dropdownTop, setDropdownTop] = useState(0);
+  const [anchor, setAnchor] = useState(null);
   const [dirtyFilters, setDirtyFilters] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -231,27 +235,28 @@ const TravelScreen = ({ navigation }) => {
     return match?.label || fallback;
   };
 
-  const measureDropdownTop = () => {
-    if (!tabsRowRef.current || !overlayRef.current) return;
-    tabsRowRef.current.measureInWindow((x, y, width, height) => {
-      overlayRef.current.measureInWindow((overlayX, overlayY) => {
-        const nextTop = y - overlayY + height + theme.spacing.xs;
-        setDropdownTop(Math.max(nextTop, 0));
-      });
-    });
-  };
-
   const toggleDropdown = (key) => {
     if (openDropdown === key) {
       setOpenDropdown(null);
+      setAnchor(null);
       return;
     }
-    setOpenDropdown(key);
-    requestAnimationFrame(measureDropdownTop);
+
+    const ref = tabRefs.current?.[key]?.current;
+    if (ref?.measureInWindow) {
+      ref.measureInWindow((x, y, width, height) => {
+        setAnchor({ x, y, w: width, h: height });
+        setOpenDropdown(key);
+      });
+    } else {
+      setAnchor(null);
+      setOpenDropdown(key);
+    }
   };
 
   const closeDropdown = () => {
     setOpenDropdown(null);
+    setAnchor(null);
   };
 
   const requestPayload = useMemo(() => {
@@ -337,6 +342,30 @@ const TravelScreen = ({ navigation }) => {
   ];
 
   const activeDropdown = dropdownTabs.find((tab) => tab.key === openDropdown) || null;
+  const windowDimensions = Dimensions.get('window');
+  const dropdownRowHeight = 44;
+  const dropdownPadding = theme.spacing.xs * 2;
+
+  const getDropdownPanelStyle = () => {
+    if (!anchor || !activeDropdown) return {};
+    const maxWidth = Math.min(anchor.w * 1.4, 320);
+    const menuHeight = activeDropdown.options.length * dropdownRowHeight + dropdownPadding;
+    let top = anchor.y + anchor.h + 8;
+    if (top + menuHeight > windowDimensions.height) {
+      top = anchor.y - menuHeight - 8;
+    }
+    top = Math.max(8, top);
+    let left = anchor.x;
+    if (left + maxWidth > windowDimensions.width - theme.spacing.lg) {
+      left = Math.max(theme.spacing.lg, windowDimensions.width - maxWidth - theme.spacing.lg);
+    }
+    return {
+      top,
+      left,
+      minWidth: anchor.w,
+      maxWidth,
+    };
+  };
 
   const handleSearch = async () => {
     setFormError('');
@@ -454,7 +483,7 @@ const TravelScreen = ({ navigation }) => {
       imageStyle={styles.backgroundImage}
     >
       <SafeAreaView style={styles.safeArea}>
-        <View ref={overlayRef} collapsable={false} style={[styles.overlay, isWeb && styles.overlayWeb]}>
+        <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             data={listData}
@@ -469,11 +498,7 @@ const TravelScreen = ({ navigation }) => {
                 <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureCountryLabel}</Text>
                 {renderSegmentedControl(countryOptions, departureCountry, setDepartureCountry)}
 
-                <View
-                  ref={tabsRowRef}
-                  collapsable={false}
-                  style={[styles.dropdownTabsWrapper, isRTL && styles.dropdownTabsWrapperRtl]}
-                >
+                <View style={[styles.dropdownTabsWrapper, isRTL && styles.dropdownTabsWrapperRtl]}>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -487,6 +512,7 @@ const TravelScreen = ({ navigation }) => {
                         isOpen={openDropdown === tab.key}
                         onPress={() => toggleDropdown(tab.key)}
                         isRTL={isRTL}
+                        ref={tabRefs.current[tab.key]}
                       />
                     ))}
                   </ScrollView>
@@ -543,9 +569,9 @@ const TravelScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
           />
           {openDropdown && activeDropdown ? (
-            <View style={styles.dropdownLayer} pointerEvents="box-none">
-              <Pressable style={styles.dropdownBackdrop} onPress={closeDropdown} />
-              <View style={[styles.dropdownPanel, { top: dropdownTop }]}>
+            <Modal transparent animationType="fade" visible onRequestClose={closeDropdown}>
+              <Pressable style={styles.modalBackdrop} onPress={closeDropdown} />
+              <View style={[styles.dropdownPanel, getDropdownPanelStyle()]}>
                 {activeDropdown.options.map((option) => {
                   const isSelected = activeDropdown.selectedValue === option.value;
                   return (
@@ -566,7 +592,7 @@ const TravelScreen = ({ navigation }) => {
                   );
                 })}
               </View>
-            </View>
+            </Modal>
           ) : null}
           <WebSidebar
             title={sidebarTitle}
@@ -761,6 +787,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: theme.spacing.lg,
   },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
   modalInner: {
     width: '100%',
     maxWidth: 420,
@@ -828,29 +862,16 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '700',
   },
-  dropdownLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 20,
-    elevation: 20,
-  },
-  dropdownBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
   dropdownPanel: {
     position: 'absolute',
-    left: theme.spacing.lg,
-    right: theme.spacing.lg,
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
     paddingVertical: theme.spacing.xs,
     ...theme.shadow.card,
+    zIndex: 9999,
+    elevation: 9999,
   },
   dropdownOption: {
     paddingVertical: 12,
