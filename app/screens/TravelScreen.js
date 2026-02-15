@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Calendar } from 'react-native-calendars';
 import {
   ActivityIndicator,
-  Animated,
   Dimensions,
   FlatList,
   ImageBackground,
@@ -54,6 +53,8 @@ const CARRIER_NAMES = {
   SN: 'Brussels Airlines',
 };
 
+const ANY_OPTION = { label: 'Qualsiasi', value: null };
+
 const STATUS = {
   IDLE: 'idle',
   LOADING: 'loading',
@@ -100,8 +101,8 @@ const TravelScreen = ({ navigation }) => {
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [pickerState, setPickerState] = useState({ visible: false, type: 'departure', date: new Date() });
-  const [originIata, setOriginIata] = useState(AIRPORTS_BY_COUNTRY.IT[0]?.value || '');
-  const [destinationIata, setDestinationIata] = useState(AIRPORTS_BY_COUNTRY.TN[0]?.value || '');
+  const [originIata, setOriginIata] = useState(null);
+  const [destinationIata, setDestinationIata] = useState(null);
   const [maxStops, setMaxStops] = useState(null);
   const [sortOrder, setSortOrder] = useState('asc');
   const [status, setStatus] = useState(STATUS.IDLE);
@@ -113,28 +114,28 @@ const TravelScreen = ({ navigation }) => {
   const [anchor, setAnchor] = useState(null);
   const [dirtyFilters, setDirtyFilters] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastTimeoutRef = useRef(null);
+  const [banner, setBanner] = useState({ visible: false, type: 'info', message: '' });
 
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
-  const originOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
-  const destinationOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
+  const originAirportOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
+  const destinationAirportOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
+  const originOptions = [ANY_OPTION, ...originAirportOptions];
+  const destinationOptions = [ANY_OPTION, ...destinationAirportOptions];
 
   useEffect(() => {
     const originValues = originOptions.map((option) => option.value);
     const destinationValues = destinationOptions.map((option) => option.value);
 
     if (!originValues.includes(originIata)) {
-      setOriginIata(originOptions[0]?.value || '');
+      setOriginIata(null);
     }
 
     if (!destinationValues.includes(destinationIata)) {
-      setDestinationIata(destinationOptions[0]?.value || '');
+      setDestinationIata(null);
     }
 
     setOpenDropdown(null);
-  }, [departureCountry, originOptions, destinationOptions, originIata, destinationIata]);
+  }, [departureCountry, originAirportOptions, destinationAirportOptions, originIata, destinationIata]);
 
   useEffect(() => {
     if (!hasSearched || status === STATUS.LOADING) return;
@@ -142,14 +143,6 @@ const TravelScreen = ({ navigation }) => {
     setRequestError('');
     setDirtyFilters(true);
   }, [departureCountry, departureDate, returnDate, hasSearched]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const formatDate = (date) => {
     const day = String(date.getDate()).padStart(2, '0');
@@ -418,18 +411,25 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const buildRequestPayload = (overrides = {}) => {
-    const nextDepartureCountry = overrides.departureCountry ?? departureCountry;
-    const nextDestinationCountry = overrides.destinationCountry ?? (nextDepartureCountry === 'IT' ? 'TN' : 'IT');
-    const nextDepartureDate = overrides.departureDate ?? departureDate;
-    const nextReturnDate = overrides.returnDate ?? returnDate;
-    const nextMaxStops = overrides.maxStops ?? maxStops;
-    const nextSortOrder = overrides.sortOrder ?? sortOrder;
+    const hasOverride = (key) => Object.prototype.hasOwnProperty.call(overrides, key);
+    const nextDepartureCountry = hasOverride('departureCountry') ? overrides.departureCountry : departureCountry;
+    const nextDestinationCountry = hasOverride('destinationCountry')
+      ? overrides.destinationCountry
+      : nextDepartureCountry === 'IT'
+        ? 'TN'
+        : 'IT';
+    const nextDepartureDate = hasOverride('departureDate') ? overrides.departureDate : departureDate;
+    const nextReturnDate = hasOverride('returnDate') ? overrides.returnDate : returnDate;
+    const nextMaxStops = hasOverride('maxStops') ? overrides.maxStops : maxStops;
+    const nextSortOrder = hasOverride('sortOrder') ? overrides.sortOrder : sortOrder;
+    const nextOriginIata = hasOverride('originIata') ? overrides.originIata : originIata;
+    const nextDestinationIata = hasOverride('destinationIata') ? overrides.destinationIata : destinationIata;
 
     return {
       originCountry: nextDepartureCountry,
-      originIata: overrides.originIata ?? originIata,
+      originIata: nextOriginIata,
       destinationCountry: nextDestinationCountry,
-      destinationIata: overrides.destinationIata ?? destinationIata,
+      destinationIata: nextDestinationIata,
       departureDate: toIsoDate(nextDepartureDate),
       returnDate: nextReturnDate ? toIsoDate(nextReturnDate) : null,
       maxStops: nextMaxStops ?? null,
@@ -440,30 +440,29 @@ const TravelScreen = ({ navigation }) => {
     };
   };
 
-  const showToast = (message) => {
-    if (!message) return;
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    toastOpacity.stopAnimation();
-    setToastMessage(message);
-    Animated.timing(toastOpacity, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      toastTimeoutRef.current = setTimeout(() => {
-        Animated.timing(toastOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(({ finished }) => {
-          if (finished) {
-            setToastMessage('');
-          }
-        });
-      }, 900);
+  const showBanner = (type, message) => {
+    setBanner({
+      visible: true,
+      type,
+      message,
     });
+  };
+
+  const formatSummaryDate = (value) => {
+    if (!value) return '--';
+    const [day, month] = String(value).split('-');
+    if (!day || !month) return '--';
+    return `${day}/${month}`;
+  };
+
+  const buildFilterSummary = () => {
+    const originLabel = getOptionLabel(originOptions, originIata, originIata || ANY_OPTION.label);
+    const destinationLabel = getOptionLabel(destinationOptions, destinationIata, destinationIata || ANY_OPTION.label);
+    const stopsLabel = maxStops === null ? ANY_OPTION.label : String(maxStops);
+    const priceDirection = sortOrder === 'desc' ? '↓' : '↑';
+    const departureSummary = formatSummaryDate(departureDate);
+    const returnSummary = formatSummaryDate(returnDate);
+    return `${originLabel} → ${destinationLabel} • Scali: ${stopsLabel} • Prezzo: ${priceDirection} • Date: ${departureSummary} – ${returnSummary}`;
   };
 
   const handleSearch = async (overrides = {}) => {
@@ -495,6 +494,7 @@ const TravelScreen = ({ navigation }) => {
     setDirtyFilters(false);
     setOpenDropdown(null);
     setStatus(STATUS.LOADING);
+    showBanner('loading', 'Aggiornamento risultati...');
 
     try {
       const data = await searchFlights(requestPayload);
@@ -506,9 +506,11 @@ const TravelScreen = ({ navigation }) => {
       setAllResults(offers);
       setVisibleResults(transformedOffers);
       setStatus(transformedOffers.length ? STATUS.SUCCESS : STATUS.EMPTY);
+      showBanner('success', 'Risultati aggiornati');
     } catch (error) {
       setRequestError(error?.message || travelStrings.errorState);
       setStatus(STATUS.ERROR);
+      showBanner('error', 'Errore durante la ricerca.');
     }
   };
 
@@ -517,7 +519,7 @@ const TravelScreen = ({ navigation }) => {
     setDirtyFilters(false);
     setFormError('');
     setRequestError('');
-    showToast(`Filtro scali: ${nextStops === null ? 'Qualsiasi' : nextStops}`);
+    showBanner('info', 'Filtro scali applicato');
   };
 
   const handleSortOrderChange = (nextOrder) => {
@@ -525,7 +527,7 @@ const TravelScreen = ({ navigation }) => {
     setDirtyFilters(false);
     setFormError('');
     setRequestError('');
-    showToast(`Ordinato per prezzo: ${nextOrder === 'desc' ? '↓' : '↑'}`);
+    showBanner('info', 'Ordinamento applicato');
   };
 
   const handleOriginChange = (nextOriginIata) => {
@@ -536,11 +538,11 @@ const TravelScreen = ({ navigation }) => {
     const selectedOrigin = getOptionLabel(originOptions, nextOriginIata, nextOriginIata || '--');
     const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
-      showToast(`Partenza: ${selectedOrigin} - aggiornamento...`);
+      showBanner('loading', 'Aggiornamento risultati...');
       void handleSearch({ originIata: nextOriginIata });
       return;
     }
-    showToast(`Partenza: ${selectedOrigin} - selezione aggiornata`);
+    showBanner('info', `Partenza aggiornata: ${selectedOrigin}`);
   };
 
   const handleDestinationChange = (nextDestinationIata) => {
@@ -551,11 +553,11 @@ const TravelScreen = ({ navigation }) => {
     const selectedDestination = getOptionLabel(destinationOptions, nextDestinationIata, nextDestinationIata || '--');
     const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
-      showToast(`Arrivo: ${selectedDestination} - aggiornamento...`);
+      showBanner('loading', 'Aggiornamento risultati...');
       void handleSearch({ destinationIata: nextDestinationIata });
       return;
     }
-    showToast(`Arrivo: ${selectedDestination} - selezione aggiornata`);
+    showBanner('info', `Arrivo aggiornato: ${selectedDestination}`);
   };
 
   useEffect(() => {
@@ -583,8 +585,8 @@ const TravelScreen = ({ navigation }) => {
     { key: 'desc', value: 'desc', label: travelStrings.priceDesc },
   ];
 
-  const originValueLabel = getOptionLabel(originOptions, originIata, '--');
-  const destinationValueLabel = getOptionLabel(destinationOptions, destinationIata, '--');
+  const originValueLabel = getOptionLabel(originOptions, originIata, ANY_OPTION.label);
+  const destinationValueLabel = getOptionLabel(destinationOptions, destinationIata, ANY_OPTION.label);
   const stopsValueLabel = getOptionLabel(stopsOptions, maxStops ?? null, travelStrings.anyStops);
   const priceValueLabel = sortOrder === 'asc' ? '↑' : '↓';
 
@@ -659,7 +661,7 @@ const TravelScreen = ({ navigation }) => {
         const isSelected = selectedValue === option.value;
         return (
           <Pressable
-            key={option.key || option.value}
+            key={option.key || option.value || option.label}
             onPress={() => onSelect(option.value)}
             style={({ pressed }) => [
               styles.segment,
@@ -746,6 +748,15 @@ const TravelScreen = ({ navigation }) => {
   const isSearching = status === STATUS.LOADING;
   const hasResults = visibleResults.length > 0;
   const listData = hasResults ? visibleResults : [];
+  const bannerTypeStyle =
+    banner.type === 'loading'
+      ? styles.bannerLoading
+      : banner.type === 'success'
+        ? styles.bannerSuccess
+        : banner.type === 'error'
+          ? styles.bannerError
+          : styles.bannerInfo;
+  const filterSummary = buildFilterSummary();
 
   return (
     <ImageBackground
@@ -834,10 +845,27 @@ const TravelScreen = ({ navigation }) => {
                   <Text style={styles.searchLabel}>{travelStrings.searchButton}</Text>
                 </Pressable>
 
-                {toastMessage ? (
-                  <Animated.View style={[styles.toastBanner, { opacity: toastOpacity }]}>
-                    <Text style={[styles.toastBannerText, isRTL && styles.rtlText]}>{toastMessage}</Text>
-                  </Animated.View>
+                {banner.visible ? (
+                  <View style={[styles.bannerCard, bannerTypeStyle]}>
+                    <View style={[styles.bannerHeader, isRTL && styles.bannerHeaderRtl]}>
+                      <Text style={[styles.bannerMessage, isRTL && styles.rtlText]}>{banner.message}</Text>
+                      <Pressable
+                        onPress={() => setBanner((prev) => ({ ...prev, visible: false }))}
+                        style={({ pressed }) => [styles.bannerCloseButton, pressed && styles.pressedItem]}
+                      >
+                        <Text style={styles.bannerCloseLabel}>X</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.bannerSummary, isRTL && styles.rtlText]}>{filterSummary}</Text>
+                    {banner.type === 'error' ? (
+                      <Pressable
+                        style={({ pressed }) => [styles.bannerRetryButton, pressed && styles.pressedItem]}
+                        onPress={handleSearch}
+                      >
+                        <Text style={styles.bannerRetryLabel}>{travelStrings.retryLabel || 'Riprova'}</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
@@ -854,7 +882,7 @@ const TravelScreen = ({ navigation }) => {
                   const isSelected = activeDropdown.selectedValue === option.value;
                   return (
                     <Pressable
-                      key={option.key || option.value}
+                      key={option.key || option.value || option.label}
                       style={({ pressed }) => [
                         styles.dropdownOption,
                         isSelected && styles.dropdownOptionSelected,
@@ -1062,21 +1090,74 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
-  toastBanner: {
-    alignSelf: 'flex-start',
+  bannerCard: {
     marginTop: theme.spacing.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: theme.radius.md,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     ...theme.shadow.card,
   },
-  toastBannerText: {
-    fontSize: 13,
+  bannerInfo: {
+    backgroundColor: '#F4F7FF',
+  },
+  bannerLoading: {
+    backgroundColor: '#FFF8EB',
+  },
+  bannerSuccess: {
+    backgroundColor: '#ECFDF3',
+  },
+  bannerError: {
+    backgroundColor: '#FDECEC',
+  },
+  bannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+  },
+  bannerHeaderRtl: {
+    flexDirection: 'row-reverse',
+  },
+  bannerMessage: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
     color: theme.colors.text,
+  },
+  bannerSummary: {
+    marginTop: 4,
+    fontSize: 12,
+    color: theme.colors.muted,
+    lineHeight: 18,
+  },
+  bannerCloseButton: {
+    minWidth: 24,
+    minHeight: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(12,27,51,0.08)',
+  },
+  bannerCloseLabel: {
     fontWeight: '600',
+    color: theme.colors.text,
+    fontSize: 12,
+  },
+  bannerRetryButton: {
+    alignSelf: 'flex-start',
+    marginTop: theme.spacing.xs,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  bannerRetryLabel: {
+    color: theme.colors.primary,
+    fontWeight: '700',
+    fontSize: 12,
   },
   modalOverlay: {
     flex: 1,
