@@ -101,7 +101,7 @@ const TravelScreen = ({ navigation }) => {
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [pickerState, setPickerState] = useState({ visible: false, type: 'departure', date: new Date() });
-  const [originIata, setOriginIata] = useState(null);
+  const [originIata, setOriginIata] = useState(AIRPORTS_BY_COUNTRY.IT[0]?.value || null);
   const [destinationIata, setDestinationIata] = useState(null);
   const [maxStops, setMaxStops] = useState(null);
   const [sortOrder, setSortOrder] = useState('asc');
@@ -119,7 +119,7 @@ const TravelScreen = ({ navigation }) => {
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originAirportOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
   const destinationAirportOptions = AIRPORTS_BY_COUNTRY[destinationCountry] || [];
-  const originOptions = [ANY_OPTION, ...originAirportOptions];
+  const originOptions = [...originAirportOptions];
   const destinationOptions = [ANY_OPTION, ...destinationAirportOptions];
 
   useEffect(() => {
@@ -127,7 +127,7 @@ const TravelScreen = ({ navigation }) => {
     const destinationValues = destinationOptions.map((option) => option.value);
 
     if (!originValues.includes(originIata)) {
-      setOriginIata(null);
+      setOriginIata(originOptions[0]?.value || null);
     }
 
     if (!destinationValues.includes(destinationIata)) {
@@ -456,7 +456,7 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const buildFilterSummary = () => {
-    const originLabel = getOptionLabel(originOptions, originIata, originIata || ANY_OPTION.label);
+    const originLabel = getOptionLabel(originOptions, originIata, originOptions[0]?.label || '--');
     const destinationLabel = getOptionLabel(destinationOptions, destinationIata, destinationIata || ANY_OPTION.label);
     const stopsLabel = maxStops === null ? ANY_OPTION.label : String(maxStops);
     const priceDirection = sortOrder === 'desc' ? '↓' : '↑';
@@ -474,6 +474,12 @@ const TravelScreen = ({ navigation }) => {
 
     setFormError('');
     setRequestError('');
+
+    if (!requestPayload.originIata) {
+      setFormError('Seleziona aeroporto di partenza');
+      showBanner('error', 'Seleziona aeroporto di partenza');
+      return;
+    }
 
     if (!nextDepartureDate) {
       setFormError(travelStrings.departureDateRequired);
@@ -535,7 +541,7 @@ const TravelScreen = ({ navigation }) => {
     setOriginIata(nextOriginIata);
     setFormError('');
     setRequestError('');
-    const selectedOrigin = getOptionLabel(originOptions, nextOriginIata, nextOriginIata || '--');
+    const selectedOrigin = getOptionLabel(originOptions, nextOriginIata, originOptions[0]?.label || '--');
     const shouldAutoSearch = (hasSearched || allResults.length > 0) && status !== STATUS.LOADING;
     if (shouldAutoSearch) {
       showBanner('loading', 'Aggiornamento risultati...');
@@ -585,7 +591,7 @@ const TravelScreen = ({ navigation }) => {
     { key: 'desc', value: 'desc', label: travelStrings.priceDesc },
   ];
 
-  const originValueLabel = getOptionLabel(originOptions, originIata, ANY_OPTION.label);
+  const originValueLabel = getOptionLabel(originOptions, originIata, originOptions[0]?.label || '--');
   const destinationValueLabel = getOptionLabel(destinationOptions, destinationIata, ANY_OPTION.label);
   const stopsValueLabel = getOptionLabel(stopsOptions, maxStops ?? null, travelStrings.anyStops);
   const priceValueLabel = sortOrder === 'asc' ? '↑' : '↓';
