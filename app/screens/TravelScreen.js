@@ -205,41 +205,49 @@ const TravelScreen = ({ navigation }) => {
     return value.trim().toUpperCase();
   };
 
-  const getCarrierCodes = (offer) => {
-    const addUniqueCode = (targetSet, codeValue) => {
-      const code = normalizeCarrierCode(codeValue);
+  const getUniqueCarriersFromSegments = (segments) => {
+    if (!Array.isArray(segments) || !segments.length) return [];
+    const carrierCodes = new Set();
+    segments.forEach((segment) => {
+      const code = normalizeCarrierCode(segment?.carrier);
       if (code) {
-        targetSet.add(code);
+        carrierCodes.add(code);
       }
-    };
-
-    const metaCarriers = Array.isArray(offer?.meta?.carriers) ? offer.meta.carriers : [];
-    const metaCodes = new Set();
-    metaCarriers.forEach((code) => addUniqueCode(metaCodes, code));
-    if (metaCodes.size > 0) {
-      return Array.from(metaCodes);
-    }
-
-    const segmentCodes = new Set();
-    const outboundSegments = Array.isArray(offer?.outbound?.segments) ? offer.outbound.segments : [];
-    const inboundSegments = Array.isArray(offer?.inbound?.segments) ? offer.inbound.segments : [];
-    [...outboundSegments, ...inboundSegments].forEach((segment) => addUniqueCode(segmentCodes, segment?.carrier));
-    return Array.from(segmentCodes);
+    });
+    return Array.from(carrierCodes);
   };
 
-  const formatCarrierLabel = (offer) => {
-    const carrierCodes = getCarrierCodes(offer);
-    if (!carrierCodes.length) return 'Compagnia: --';
+  const getUniqueCarrierCodes = (codes) => {
+    if (!Array.isArray(codes) || !codes.length) return [];
+    const uniqueCodes = new Set();
+    codes.forEach((codeValue) => {
+      const code = normalizeCarrierCode(codeValue);
+      if (code) {
+        uniqueCodes.add(code);
+      }
+    });
+    return Array.from(uniqueCodes);
+  };
 
-    const visibleCodes = carrierCodes.slice(0, 3);
+  const formatCarriers = (codes) => {
+    const uniqueCodes = getUniqueCarrierCodes(codes);
+    if (!uniqueCodes.length) return '--';
+
+    const visibleCodes = uniqueCodes.slice(0, 3);
     const visibleCarriers = visibleCodes.map((code) => {
       const carrierName = CARRIER_NAMES[code];
       return carrierName ? `${carrierName} (${code})` : code;
     });
 
-    const prefix = carrierCodes.length === 1 ? 'Compagnia' : 'Compagnie';
-    const suffix = carrierCodes.length > 3 ? ', …' : '';
-    return `${prefix}: ${visibleCarriers.join(', ')}${suffix}`;
+    const suffix = uniqueCodes.length > 3 ? ', …' : '';
+    return `${visibleCarriers.join(', ')}${suffix}`;
+  };
+
+  const formatCarrierLine = (codes) => {
+    const uniqueCodes = getUniqueCarrierCodes(codes);
+    if (!uniqueCodes.length) return 'Compagnia: --';
+    const prefix = uniqueCodes.length === 1 ? 'Compagnia' : 'Compagnie';
+    return `${prefix}: ${formatCarriers(uniqueCodes)}`;
   };
 
   const updateDate = (type, date) => {
@@ -525,19 +533,24 @@ const TravelScreen = ({ navigation }) => {
     const routeDestination = lastOutboundSegment?.to || lastOutboundSegment?.toIata || destinationIata || '--';
 
     const outboundTimes = `${formatTime(item?.outbound?.departure)} – ${formatTime(item?.outbound?.arrival)}`;
-    const carrierLabel = formatCarrierLabel(item);
-    const outboundInfo = `${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
+    const outboundCarrierCodes = getUniqueCarriersFromSegments(outboundSegments);
+    const outboundMetaCarrierCodes = Array.isArray(item?.meta?.carriers) ? item.meta.carriers : [];
+    const outboundCarrierLine = formatCarrierLine(
+      outboundCarrierCodes.length ? outboundCarrierCodes : outboundMetaCarrierCodes,
+    );
+    const outboundInfo = `${outboundCarrierLine} • ${formatStops(item?.outbound?.stops)} • Durata: ${formatDuration(item?.outbound?.durationMinutes)}`;
     const formattedPrice = formatPrice(item?.price);
 
     const hasInbound = Boolean(item?.inbound);
+    const inboundSegments = Array.isArray(item?.inbound?.segments) ? item.inbound.segments : [];
+    const inboundCarrierLine = formatCarrierLine(getUniqueCarriersFromSegments(inboundSegments));
     const inboundTimes = `${formatTime(item?.inbound?.departure)} – ${formatTime(item?.inbound?.arrival)}`;
-    const inboundInfo = `${formatStops(item?.inbound?.stops)} • Durata: ${formatDuration(item?.inbound?.durationMinutes)}`;
+    const inboundInfo = `${inboundCarrierLine} • ${formatStops(item?.inbound?.stops)} • Durata: ${formatDuration(item?.inbound?.durationMinutes)}`;
 
     return (
       <View style={styles.flightCard}>
         <Text style={[styles.flightRouteTitle, isRTL && styles.rtlText]}>{`${routeOrigin} → ${routeDestination}`}</Text>
         <Text style={[styles.flightTimes, isRTL && styles.rtlText]}>{outboundTimes}</Text>
-        <Text style={[styles.carrierInfo, isRTL && styles.rtlText]}>{carrierLabel}</Text>
         <Text style={[styles.flightInfo, isRTL && styles.rtlText]}>{outboundInfo}</Text>
         <Text style={[styles.flightPrice, isRTL && styles.rtlText]}>{formattedPrice}</Text>
         {hasInbound ? (
@@ -1013,11 +1026,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   flightInfo: {
-    fontSize: 14,
-    color: theme.colors.muted,
-    lineHeight: 20,
-  },
-  carrierInfo: {
     fontSize: 14,
     color: theme.colors.muted,
     lineHeight: 20,
