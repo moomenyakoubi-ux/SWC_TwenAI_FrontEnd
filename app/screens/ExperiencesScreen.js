@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AppHeader from '../components/AppHeader';
+import AppHeaderCard from '../components/AppHeaderCard';
 import Card from '../components/Card';
 import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
@@ -32,31 +32,38 @@ const ExperiencesScreen = ({ navigation }) => {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-          <AppHeader title={experiencesStrings.title} isRTL={isRTL} />
-          <View style={[styles.container, isWeb && styles.webContainer]}>
-            <View style={[styles.tabRow, isRTL && styles.rowReverse]}>
-              {tabs.map((tabKey) => (
-                <TouchableOpacity
-                  key={tabKey}
-                  style={[styles.tab, activeTab === tabKey && styles.activeTab, isWeb && styles.tabWeb]}
-                  onPress={() => setActiveTab(tabKey)}
-                >
-                  <Text
-                    style={[
-                      styles.tabLabel,
-                      activeTab === tabKey && styles.activeTabLabel,
-                      isRTL && styles.rtlText,
-                    ]}
-                  >
-                    {tabKey === 'events' ? experiencesStrings.eventsTab : experiencesStrings.placesTab}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
+          <View style={styles.container}>
             <FlatList
               data={data}
               keyExtractor={(item) => item.id}
+              ListHeaderComponent={(
+                <>
+                  <AppHeaderCard
+                    title={experiencesStrings.title}
+                    subtitle={activeTab === 'events' ? experiencesStrings.eventsTab : experiencesStrings.placesTab}
+                    isRTL={isRTL}
+                  />
+                  <View style={[styles.tabRow, isRTL && styles.rowReverse]}>
+                    {tabs.map((tabKey) => (
+                      <TouchableOpacity
+                        key={tabKey}
+                        style={[styles.tab, activeTab === tabKey && styles.activeTab, isWeb && styles.tabWeb]}
+                        onPress={() => setActiveTab(tabKey)}
+                      >
+                        <Text
+                          style={[
+                            styles.tabLabel,
+                            activeTab === tabKey && styles.activeTabLabel,
+                            isRTL && styles.rtlText,
+                          ]}
+                        >
+                          {tabKey === 'events' ? experiencesStrings.eventsTab : experiencesStrings.placesTab}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
               renderItem={({ item }) => (
                 <View style={[styles.cardWrapper, isWeb && styles.cardWrapperWeb]}>
                   <Card
@@ -110,14 +117,9 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
-  },
-  webContainer: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
   },
   list: {
+    paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
   },
   webList: {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
-import Navbar from '../components/Navbar';
+import AppHeaderCard from '../components/AppHeaderCard';
 import Card from '../components/Card';
 import fakeNews from '../data/fakeNews';
 import theme from '../styles/theme';
@@ -26,11 +26,17 @@ const NewsScreen = ({ navigation }) => {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-          <Navbar title={newsStrings.title} isRTL={isRTL} />
           <View style={styles.container}>
             <FlatList
               data={fakeNews}
               keyExtractor={(item) => item.id}
+              ListHeaderComponent={(
+                <AppHeaderCard
+                  title={newsStrings.title}
+                  subtitle={newsStrings.category}
+                  isRTL={isRTL}
+                />
+              )}
               renderItem={({ item }) => (
                 <Card
                   title={item.title}
@@ -78,10 +84,9 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
   },
   list: {
+    paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.xl,
   },
   webList: {

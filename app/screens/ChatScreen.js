@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import Navbar from '../components/Navbar';
+import AppHeaderCard from '../components/AppHeaderCard';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -191,6 +191,10 @@ const ChatScreen = ({ navigation, route }) => {
     if (activeChatId === TWENSAI_CHAT_ID) return twensAiChat;
     return conversations.find((chat) => chat.id === activeChatId);
   }, [activeChatId, conversations, twensAiChat]);
+
+  const activeChatSubtitle = activeChat?.lastMessageAt
+    ? `${chatStrings.statusOffline} ${formatTime(activeChat.lastMessageAt)}`
+    : chatStrings.statusOffline;
 
   const updateConversationPreview = useCallback((message, conversationId) => {
     if (!message || !conversationId) return;
@@ -551,9 +555,28 @@ const ChatScreen = ({ navigation, route }) => {
     [conversations, twensAiChat],
   );
 
+  const backHeaderSlot = activeChat ? (
+    <TouchableOpacity
+      onPress={() => handleOpenChat(null)}
+      style={styles.headerBackButton}
+      accessibilityLabel={chatStrings.backToList || 'Tutte le chat'}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Ionicons
+        name={isRTL ? 'arrow-forward' : 'arrow-back'}
+        size={20}
+        color={theme.colors.card}
+      />
+    </TouchableOpacity>
+  ) : null;
+
   const ChatList = () => (
     <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
-      <Text style={[styles.listTitle, isRTL && styles.rtlText]}>{chatStrings.listTitle}</Text>
+      <AppHeaderCard
+        title={chatStrings.title}
+        subtitle={chatStrings.listTitle}
+        isRTL={isRTL}
+      />
       {conversationsLoading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={theme.colors.card} />
@@ -608,6 +631,12 @@ const ChatScreen = ({ navigation, route }) => {
       keyboardVerticalOffset={0}
     >
       <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+        <AppHeaderCard
+          title={chatStrings.aiTitle}
+          subtitle={chatStrings.aiEmptyState}
+          leftSlot={backHeaderSlot}
+          isRTL={isRTL}
+        />
         <ScrollView
           ref={aiScrollRef}
           contentContainerStyle={styles.messages}
@@ -642,13 +671,6 @@ const ChatScreen = ({ navigation, route }) => {
       imageStyle={styles.backgroundImage}
     >
       <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-        <Navbar
-          title={isAiMode ? chatStrings.aiTitle : activeChat ? activeChat.name : chatStrings.title}
-          isRTL={isRTL}
-          onBack={activeChat ? () => handleOpenChat(null) : undefined}
-          backLabel={activeChat ? chatStrings.backToList : undefined}
-        />
-
         {!activeChat && <ChatList />}
 
         {activeChat && !isAiMode && (
@@ -658,6 +680,12 @@ const ChatScreen = ({ navigation, route }) => {
             keyboardVerticalOffset={0}
           >
             <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+              <AppHeaderCard
+                title={activeChat.name}
+                subtitle={activeChatSubtitle}
+                leftSlot={backHeaderSlot}
+                isRTL={isRTL}
+              />
               <View style={[styles.chatHero, isRTL && styles.rowReverse]}>
                 <View style={styles.avatarLarge}>
                   {activeChat.avatarUrl ? (
@@ -671,11 +699,7 @@ const ChatScreen = ({ navigation, route }) => {
                 </View>
                 <View style={styles.heroMeta}>
                   <Text style={[styles.heroTitle, isRTL && styles.rtlText]}>{activeChat.name}</Text>
-                  <Text style={[styles.heroStatus, isRTL && styles.rtlText]}>
-                    {activeChat.lastMessageAt
-                      ? `${chatStrings.statusOffline} ${formatTime(activeChat.lastMessageAt)}`
-                      : chatStrings.statusOffline}
-                  </Text>
+                  <Text style={[styles.heroStatus, isRTL && styles.rtlText]}>{activeChatSubtitle}</Text>
                 </View>
               </View>
 
@@ -771,12 +795,6 @@ const styles = StyleSheet.create({
     maxWidth: 1080,
     alignSelf: 'center',
   },
-  listTitle: {
-    color: theme.colors.card,
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: theme.spacing.md,
-  },
   listMuted: {
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '600',
@@ -859,8 +877,18 @@ const styles = StyleSheet.create({
   chatWrapper: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
+    paddingTop: 0,
     paddingBottom: theme.spacing.md,
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   chatHero: {
     flexDirection: 'row',

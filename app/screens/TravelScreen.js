@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import AppHeader from '../components/AppHeader';
+import AppHeaderCard from '../components/AppHeaderCard';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -1119,7 +1119,6 @@ const TravelScreen = ({ navigation }) => {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-          <AppHeader title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             ref={flatListRef}
             key={`flights-${listResetKey}`}
@@ -1129,130 +1128,137 @@ const TravelScreen = ({ navigation }) => {
             renderItem={renderTrip}
             contentContainerStyle={[styles.list, isWeb && styles.webList]}
             ListHeaderComponent={
-              <View style={[styles.filtersContainer, isWeb && styles.filtersWeb]}>
-                <Text style={[styles.heading, isRTL && styles.rtlText]}>{travelStrings.searchTitle}</Text>
-                <Text style={[styles.subtitle, isRTL && styles.rtlText]}>{travelStrings.searchSubtitle}</Text>
-
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureCountryLabel}</Text>
-                {renderSegmentedControl(countryOptions, departureCountry, setDepartureCountry)}
-
-                <View style={[styles.dropdownTabsWrapper, isRTL && styles.dropdownTabsWrapperRtl]}>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={[styles.dropdownTabsRow, isRTL && styles.dropdownTabsRowRtl]}
-                  >
-                    {searchDropdownTabs.map((tab) => (
-                      <DropdownTab
-                        key={tab.key}
-                        label={tab.label}
-                        value={tab.value}
-                        isOpen={openDropdown === tab.key}
-                        onPress={() => toggleDropdown(tab.key)}
-                        isRTL={isRTL}
-                        ref={tabRefs.current[tab.key]}
-                      />
-                    ))}
-                  </ScrollView>
+              <View>
+                <View style={[styles.headerCardWrap, isWeb && styles.filtersWeb]}>
+                  <AppHeaderCard
+                    title={travelStrings.title}
+                    subtitle={travelStrings.searchSubtitle}
+                    isRTL={isRTL}
+                  />
                 </View>
+                <View style={[styles.filtersContainer, isWeb && styles.filtersWeb]}>
 
-                <Text style={[styles.label, isRTL && styles.rtlText]}>Tipo viaggio</Text>
-                {renderSegmentedControl(tripTypeOptions, tripType, handleTripTypeChange)}
+                  <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureCountryLabel}</Text>
+                  {renderSegmentedControl(countryOptions, departureCountry, setDepartureCountry)}
 
-                <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureDateLabel}</Text>
-                <TextInput
-                  style={[styles.input, isRTL && styles.inputRtl]}
-                  placeholder={travelStrings.datePlaceholder}
-                  placeholderTextColor={theme.colors.muted}
-                  value={departureDate}
-                  onFocus={() => openDatePicker('departure')}
-                  onPressIn={() => openDatePicker('departure')}
-                  showSoftInputOnFocus={false}
-                  caretHidden
-                  editable={isAndroid}
-                />
-
-                {tripType === 'roundtrip' ? (
-                  <>
-                    <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.returnDateLabel}</Text>
-                    <TextInput
-                      style={[styles.input, isRTL && styles.inputRtl]}
-                      placeholder={travelStrings.datePlaceholder}
-                      placeholderTextColor={theme.colors.muted}
-                      value={returnDate || ''}
-                      onFocus={() => openDatePicker('return')}
-                      onPressIn={() => openDatePicker('return')}
-                      showSoftInputOnFocus={false}
-                      caretHidden
-                      editable={isAndroid}
-                    />
-                  </>
-                ) : null}
-
-                {renderPickerOverlay()}
-
-                <Text style={[styles.helper, isRTL && styles.rtlText]}>{travelStrings.filterHint}</Text>
-
-                {dirtyFilters ? (
-                  <Text style={[styles.dirtyHint, isRTL && styles.rtlText]}>{travelStrings.filtersDirtyHint}</Text>
-                ) : null}
-
-                {formError ? <Text style={[styles.formError, isRTL && styles.rtlText]}>{formError}</Text> : null}
-
-                <Pressable
-                  style={[styles.searchButton, isSearching && styles.searchButtonDisabled]}
-                  onPress={() => void runSearch('manual')}
-                  disabled={isSearching}
-                >
-                  <Text style={styles.searchLabel}>{travelStrings.searchButton}</Text>
-                </Pressable>
-
-                {banner.visible ? (
-                  <View style={[styles.bannerCard, bannerTypeStyle]}>
-                    <View style={[styles.bannerHeader, isRTL && styles.bannerHeaderRtl]}>
-                      <Text style={[styles.bannerMessage, isRTL && styles.rtlText]}>{banner.message}</Text>
-                      <Pressable
-                        onPress={() => setBanner((prev) => ({ ...prev, visible: false }))}
-                        style={({ pressed }) => [styles.bannerCloseButton, pressed && styles.pressedItem]}
-                      >
-                        <Text style={styles.bannerCloseLabel}>X</Text>
-                      </Pressable>
-                    </View>
-                    <Text style={[styles.bannerSummary, isRTL && styles.rtlText]}>{filterSummary}</Text>
-                    {banner.type === 'error' ? (
-                      <Pressable
-                        style={({ pressed }) => [styles.bannerRetryButton, pressed && styles.pressedItem]}
-                        onPress={() => void runSearch('manual')}
-                      >
-                        <Text style={styles.bannerRetryLabel}>{travelStrings.retryLabel || 'Riprova'}</Text>
-                      </Pressable>
-                    ) : null}
+                  <View style={[styles.dropdownTabsWrapper, isRTL && styles.dropdownTabsWrapperRtl]}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={[styles.dropdownTabsRow, isRTL && styles.dropdownTabsRowRtl]}
+                    >
+                      {searchDropdownTabs.map((tab) => (
+                        <DropdownTab
+                          key={tab.key}
+                          label={tab.label}
+                          value={tab.value}
+                          isOpen={openDropdown === tab.key}
+                          onPress={() => toggleDropdown(tab.key)}
+                          isRTL={isRTL}
+                          ref={tabRefs.current[tab.key]}
+                        />
+                      ))}
+                    </ScrollView>
                   </View>
-                ) : null}
 
-                <View style={[styles.resultsHeaderRow, isRTL && styles.resultsHeaderRowRtl]}>
-                  <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
-                  {showResultFilters ? (
-                    <View style={[styles.resultsFiltersRow, isRTL && styles.resultsFiltersRowRtl]}>
-                      <DropdownTab
-                        key={resultStopsDropdownTab.key}
-                        label={resultStopsDropdownTab.label}
-                        value={resultStopsDropdownTab.value}
-                        isOpen={openDropdown === resultStopsDropdownTab.key}
-                        onPress={() => toggleDropdown(resultStopsDropdownTab.key)}
-                        isRTL={isRTL}
-                        ref={tabRefs.current[resultStopsDropdownTab.key]}
+                  <Text style={[styles.label, isRTL && styles.rtlText]}>Tipo viaggio</Text>
+                  {renderSegmentedControl(tripTypeOptions, tripType, handleTripTypeChange)}
+
+                  <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.departureDateLabel}</Text>
+                  <TextInput
+                    style={[styles.input, isRTL && styles.inputRtl]}
+                    placeholder={travelStrings.datePlaceholder}
+                    placeholderTextColor={theme.colors.muted}
+                    value={departureDate}
+                    onFocus={() => openDatePicker('departure')}
+                    onPressIn={() => openDatePicker('departure')}
+                    showSoftInputOnFocus={false}
+                    caretHidden
+                    editable={isAndroid}
+                  />
+
+                  {tripType === 'roundtrip' ? (
+                    <>
+                      <Text style={[styles.label, isRTL && styles.rtlText]}>{travelStrings.returnDateLabel}</Text>
+                      <TextInput
+                        style={[styles.input, isRTL && styles.inputRtl]}
+                        placeholder={travelStrings.datePlaceholder}
+                        placeholderTextColor={theme.colors.muted}
+                        value={returnDate || ''}
+                        onFocus={() => openDatePicker('return')}
+                        onPressIn={() => openDatePicker('return')}
+                        showSoftInputOnFocus={false}
+                        caretHidden
+                        editable={isAndroid}
                       />
-                      <Pressable
-                        style={({ pressed }) => [styles.resultPriceTab, pressed && styles.pressedItem]}
-                        onPress={handleSortOrderChange}
-                      >
-                        <Text style={[styles.resultPriceTabText, isRTL && styles.rtlText]}>
-                          {`${travelStrings.priceTabLabel}: ${priceValueLabel}`}
-                        </Text>
-                      </Pressable>
+                    </>
+                  ) : null}
+
+                  {renderPickerOverlay()}
+
+                  <Text style={[styles.helper, isRTL && styles.rtlText]}>{travelStrings.filterHint}</Text>
+
+                  {dirtyFilters ? (
+                    <Text style={[styles.dirtyHint, isRTL && styles.rtlText]}>{travelStrings.filtersDirtyHint}</Text>
+                  ) : null}
+
+                  {formError ? <Text style={[styles.formError, isRTL && styles.rtlText]}>{formError}</Text> : null}
+
+                  <Pressable
+                    style={[styles.searchButton, isSearching && styles.searchButtonDisabled]}
+                    onPress={() => void runSearch('manual')}
+                    disabled={isSearching}
+                  >
+                    <Text style={styles.searchLabel}>{travelStrings.searchButton}</Text>
+                  </Pressable>
+
+                  {banner.visible ? (
+                    <View style={[styles.bannerCard, bannerTypeStyle]}>
+                      <View style={[styles.bannerHeader, isRTL && styles.bannerHeaderRtl]}>
+                        <Text style={[styles.bannerMessage, isRTL && styles.rtlText]}>{banner.message}</Text>
+                        <Pressable
+                          onPress={() => setBanner((prev) => ({ ...prev, visible: false }))}
+                          style={({ pressed }) => [styles.bannerCloseButton, pressed && styles.pressedItem]}
+                        >
+                          <Text style={styles.bannerCloseLabel}>X</Text>
+                        </Pressable>
+                      </View>
+                      <Text style={[styles.bannerSummary, isRTL && styles.rtlText]}>{filterSummary}</Text>
+                      {banner.type === 'error' ? (
+                        <Pressable
+                          style={({ pressed }) => [styles.bannerRetryButton, pressed && styles.pressedItem]}
+                          onPress={() => void runSearch('manual')}
+                        >
+                          <Text style={styles.bannerRetryLabel}>{travelStrings.retryLabel || 'Riprova'}</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   ) : null}
+
+                  <View style={[styles.resultsHeaderRow, isRTL && styles.resultsHeaderRowRtl]}>
+                    <Text style={[styles.resultsTitle, isRTL && styles.rtlText]}>{travelStrings.resultsTitle}</Text>
+                    {showResultFilters ? (
+                      <View style={[styles.resultsFiltersRow, isRTL && styles.resultsFiltersRowRtl]}>
+                        <DropdownTab
+                          key={resultStopsDropdownTab.key}
+                          label={resultStopsDropdownTab.label}
+                          value={resultStopsDropdownTab.value}
+                          isOpen={openDropdown === resultStopsDropdownTab.key}
+                          onPress={() => toggleDropdown(resultStopsDropdownTab.key)}
+                          isRTL={isRTL}
+                          ref={tabRefs.current[resultStopsDropdownTab.key]}
+                        />
+                        <Pressable
+                          style={({ pressed }) => [styles.resultPriceTab, pressed && styles.pressedItem]}
+                          onPress={handleSortOrderChange}
+                        >
+                          <Text style={[styles.resultPriceTabText, isRTL && styles.rtlText]}>
+                            {`${travelStrings.priceTabLabel}: ${priceValueLabel}`}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
               </View>
             }
@@ -1330,8 +1336,12 @@ const styles = StyleSheet.create({
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
     paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
   },
+  headerCardWrap: {
+    maxWidth: 980,
+    width: '100%',
+    alignSelf: 'center',
+  },
   filtersContainer: {
-    paddingTop: theme.spacing.md,
     gap: theme.spacing.sm,
   },
   filtersWeb: {
@@ -1339,15 +1349,6 @@ const styles = StyleSheet.create({
     maxWidth: 980,
     width: '100%',
     alignSelf: 'center',
-  },
-  heading: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  subtitle: {
-    color: theme.colors.muted,
-    lineHeight: 20,
   },
   label: {
     fontWeight: '700',
