@@ -154,6 +154,9 @@ const TravelScreen = ({ navigation }) => {
   const [hasSearched, setHasSearched] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState(0);
   const [banner, setBanner] = useState({ visible: false, type: 'info', message: '' });
+  const allResultsRef = useRef([]);
+  const maxStopsRef = useRef(maxStops);
+  const sortOrderRef = useRef(sortOrder);
 
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originAirportOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
@@ -587,8 +590,16 @@ const TravelScreen = ({ navigation }) => {
   const handleStopsChange = (nextStops) => {
     if (__DEV__) {
       console.log('[UI] maxStops ->', nextStops);
+      console.log('[UI] apply filters now', {
+        maxStops: nextStops,
+        sortOrder: sortOrderRef.current,
+        all: allResultsRef.current.length,
+      });
     }
     setMaxStops(nextStops);
+    const transformed = applyTransforms(allResultsRef.current, nextStops, sortOrderRef.current);
+    setVisibleResults(transformed);
+    closeDropdown();
     setDirtyFilters(false);
     setFormError('');
     setRequestError('');
@@ -596,13 +607,19 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const handleSortOrderChange = () => {
-    setSortOrder((prevOrder) => {
-      const nextOrder = prevOrder === 'asc' ? 'desc' : 'asc';
-      if (__DEV__) {
-        console.log('[UI] sortOrder changed', nextOrder);
-      }
-      return nextOrder;
-    });
+    const nextOrder = sortOrderRef.current === 'asc' ? 'desc' : 'asc';
+    setSortOrder(nextOrder);
+    const transformed = applyTransforms(allResultsRef.current, maxStopsRef.current, nextOrder);
+    setVisibleResults(transformed);
+    closeDropdown();
+    if (__DEV__) {
+      console.log('[UI] sortOrder changed', nextOrder);
+      console.log('[UI] apply sort now', {
+        maxStops: maxStopsRef.current,
+        sortOrder: nextOrder,
+        all: allResultsRef.current.length,
+      });
+    }
     setDirtyFilters(false);
     setFormError('');
     setRequestError('');
@@ -652,6 +669,9 @@ const TravelScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
+    allResultsRef.current = allResults;
+    maxStopsRef.current = maxStops;
+    sortOrderRef.current = sortOrder;
     const transformed = applyTransforms(allResults, maxStops, sortOrder);
     if (__DEV__) {
       console.log('[UI] recompute visible', { all: allResults.length, maxStops, sortOrder, vis: transformed.length });
