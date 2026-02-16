@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -92,6 +93,7 @@ const ChatComposer = React.memo(
 
 const ChatScreen = ({ navigation, route }) => {
   const isWeb = Platform.OS === 'web';
+  const insets = useSafeAreaInsets();
   const { strings, isRTL, language } = useLanguage();
   const { user } = useSession();
   const chatStrings = strings.chat;
@@ -122,6 +124,8 @@ const ChatScreen = ({ navigation, route }) => {
   const conversationIdParam = route?.params?.conversationId;
   const isAiMode = activeChatId === TWENSAI_CHAT_ID;
   const aiRtl = isRTL;
+  const safeTopInset = Number.isFinite(insets?.top) ? insets.top : 0;
+  const contentTopPadding = (isWeb ? 0 : safeTopInset) + 12;
 
   useEffect(() => {
     if (conversationIdParam) {
@@ -570,7 +574,14 @@ const ChatScreen = ({ navigation, route }) => {
   ) : null;
 
   const ChatList = () => (
-    <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+    <View
+      style={[
+        styles.listContainer,
+        { paddingTop: contentTopPadding },
+        isWeb && styles.webContentPadding,
+        isWeb && styles.webMaxWidth,
+      ]}
+    >
       {conversationsLoading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={theme.colors.card} />
@@ -624,7 +635,14 @@ const ChatScreen = ({ navigation, route }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+      <View
+        style={[
+          styles.chatWrapper,
+          { paddingTop: contentTopPadding },
+          isWeb && styles.webContentPadding,
+          isWeb && styles.webMaxWidth,
+        ]}
+      >
         {backButton ? <View style={styles.backButtonRow}>{backButton}</View> : null}
         <ScrollView
           ref={aiScrollRef}
@@ -668,7 +686,14 @@ const ChatScreen = ({ navigation, route }) => {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={0}
           >
-            <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
+            <View
+              style={[
+                styles.chatWrapper,
+                { paddingTop: contentTopPadding },
+                isWeb && styles.webContentPadding,
+                isWeb && styles.webMaxWidth,
+              ]}
+            >
               {backButton ? <View style={styles.backButtonRow}>{backButton}</View> : null}
               <View style={[styles.chatHero, isRTL && styles.rowReverse]}>
                 <View style={styles.avatarLarge}>
@@ -771,7 +796,6 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.lg,
     gap: theme.spacing.sm,
   },
@@ -862,7 +886,6 @@ const styles = StyleSheet.create({
   chatWrapper: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.md,
   },
   backButtonRow: {

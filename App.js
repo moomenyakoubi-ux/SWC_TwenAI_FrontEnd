@@ -6,6 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
 import * as Linking from 'expo-linking';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import HomeScreen from './app/screens/HomeScreen';
 import ChatScreen from './app/screens/ChatScreen';
 import NewsScreen from './app/screens/NewsScreen';
@@ -360,7 +361,9 @@ export default function App() {
     <LanguageProvider>
       <ContactsProvider>
         <PostsProvider>
-          <AppContent />
+          <SafeAreaProvider>
+            <AppContent />
+          </SafeAreaProvider>
         </PostsProvider>
       </ContactsProvider>
     </LanguageProvider>
