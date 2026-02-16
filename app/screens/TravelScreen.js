@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Calendar } from 'react-native-calendars';
 import {
-  ActivityIndicator,
   Dimensions,
   FlatList,
   ImageBackground,
@@ -15,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Navbar from '../components/Navbar';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
@@ -23,6 +23,7 @@ import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import { searchFlights } from '../services/flightsApi';
 
 const backgroundImage = require('../images/image1.png');
+const STORAGE_KEY = 'twensai_flights_filters_v1';
 
 const AIRPORTS_BY_COUNTRY = {
   IT: [
@@ -54,6 +55,9 @@ const CARRIER_NAMES = {
 };
 
 const ANY_OPTION = { label: 'Qualsiasi', value: null };
+const resolveDestinationCountry = (originCountry) => (originCountry === 'IT' ? 'TN' : 'IT');
+const isValidCountryCode = (countryCode) =>
+  typeof countryCode === 'string' && Object.prototype.hasOwnProperty.call(AIRPORTS_BY_COUNTRY, countryCode);
 
 const extractIataFromLabel = (label) => {
   if (typeof label !== 'string') return '';
@@ -132,6 +136,7 @@ const TravelScreen = ({ navigation }) => {
     destination: React.createRef(),
     resultStops: React.createRef(),
   });
+  const flatListRef = useRef(null);
   const [departureCountry, setDepartureCountry] = useState('IT');
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState(null);
@@ -157,6 +162,7 @@ const TravelScreen = ({ navigation }) => {
   const allResultsRef = useRef([]);
   const maxStopsRef = useRef(maxStops);
   const sortOrderRef = useRef(sortOrder);
+  const isRestoringRef = useRef(true);
 
   const destinationCountry = departureCountry === 'IT' ? 'TN' : 'IT';
   const originAirportOptions = AIRPORTS_BY_COUNTRY[departureCountry] || [];
@@ -174,6 +180,125 @@ const TravelScreen = ({ navigation }) => {
   const pendingNetworkSearchRef = useRef(false);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const restoreFilters = async () => {
+      isRestoringRef.current = true;
+      try {
+        const savedFilters = await AsyncStorage.getItem(STORAGE_KEY);
+        if (!savedFilters || !isMounted) return;
+
+        let parsedFilters = null;
+        try {
+          parsedFilters = JSON.parse(savedFilters);
+        } catch {
+          return;
+        }
+        if (!parsedFilters || typeof parsedFilters !== 'object') return;
+
+        const parsedOriginCountry = parsedFilters.originCountry || parsedFilters.departureCountry;
+        const savedOriginCountry = isValidCountryCode(parsedOriginCountry)
+          ? parsedOriginCountry
+          : 'IT';
+        const parsedDestinationCountry = isValidCountryCode(parsedFilters.destinationCountry)
+          ? parsedFilters.destinationCountry
+          : resolveDestinationCountry(savedOriginCountry);
+        const expectedDestinationCountry = resolveDestinationCountry(savedOriginCountry);
+        const restoredDestinationCountry =
+          parsedDestinationCountry === expectedDestinationCountry ? parsedDestinationCountry : expectedDestinationCountry;
+        const restoredOriginOptions = buildAirportOptions(AIRPORTS_BY_COUNTRY[savedOriginCountry] || []);
+        const restoredDestinationOptions = buildAirportOptions(AIRPORTS_BY_COUNTRY[restoredDestinationCountry] || []);
+        const restoredOriginCodes = restoredOriginOptions.map((option) => option.value);
+        const restoredDestinationCodes = restoredDestinationOptions.map((option) => option.value);
+
+        const normalizedOriginIata = normalizeIataCode(parsedFilters.originIata, '');
+        const nextOriginIata = restoredOriginCodes.includes(normalizedOriginIata)
+          ? normalizedOriginIata
+          : restoredOriginCodes[0] || '';
+
+        const parsedDestinationIata = parsedFilters.destinationIata;
+        const normalizedDestinationIata =
+          parsedDestinationIata === null ? null : normalizeIataCode(parsedDestinationIata, '');
+        const nextDestinationIata =
+          normalizedDestinationIata && restoredDestinationCodes.includes(normalizedDestinationIata)
+            ? normalizedDestinationIata
+            : null;
+
+        const nextTripType = parsedFilters.tripType === 'roundtrip' ? 'roundtrip' : 'oneway';
+        const nextReturnDate =
+          nextTripType === 'oneway'
+            ? null
+            : typeof parsedFilters.returnDate === 'string' && parsedFilters.returnDate.trim()
+              ? parsedFilters.returnDate
+              : null;
+        const nextDepartureDate =
+          typeof parsedFilters.departureDate === 'string' && parsedFilters.departureDate.trim()
+            ? parsedFilters.departureDate
+            : '';
+        const nextSortOrder = parsedFilters.sortOrder === 'desc' ? 'desc' : 'asc';
+        const nextMaxStops =
+          parsedFilters.maxStops === 0 || parsedFilters.maxStops === 1 || parsedFilters.maxStops === 2
+            ? parsedFilters.maxStops
+            : null;
+
+        if (!isMounted) return;
+        setDepartureCountry(savedOriginCountry);
+        setOriginIata(nextOriginIata);
+        setDestinationIata(nextDestinationIata);
+        setDepartureDate(nextDepartureDate);
+        setTripType(nextTripType);
+        setReturnDate(nextReturnDate);
+        setSortOrder(nextSortOrder);
+        setMaxStops(nextMaxStops);
+        setBanner({ visible: true, type: 'info', message: 'Filtri ripristinati' });
+      } catch (error) {
+        if (__DEV__) {
+          console.log('[Travel] restore filters failed', error);
+        }
+      } finally {
+        setTimeout(() => {
+          if (isMounted) {
+            isRestoringRef.current = false;
+          }
+        }, 0);
+      }
+    };
+
+    void restoreFilters();
+
+    return () => {
+      isMounted = false;
+      isRestoringRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isRestoringRef.current) return;
+
+    const savePayload = {
+      originCountry: departureCountry,
+      destinationCountry,
+      originIata,
+      destinationIata,
+      departureDate,
+      returnDate: tripType === 'roundtrip' ? returnDate : null,
+      tripType: tripType === 'roundtrip' ? 'roundtrip' : 'oneway',
+      sortOrder: sortOrder === 'desc' ? 'desc' : 'asc',
+      maxStops: maxStops === 0 || maxStops === 1 || maxStops === 2 ? maxStops : null,
+    };
+
+    const saveTimer = setTimeout(() => {
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(savePayload)).catch((error) => {
+        if (__DEV__) {
+          console.log('[Travel] save filters failed', error);
+        }
+      });
+    }, 300);
+
+    return () => clearTimeout(saveTimer);
+  }, [departureCountry, destinationCountry, originIata, destinationIata, departureDate, returnDate, tripType, sortOrder, maxStops]);
+
+  useEffect(() => {
     const originValues = originOptions.map((option) => option.value);
     const destinationValues = destinationOptions.map((option) => option.value);
 
@@ -189,7 +314,7 @@ const TravelScreen = ({ navigation }) => {
   }, [departureCountry, originAirportOptions, destinationAirportOptions, originIata, destinationIata]);
 
   useEffect(() => {
-    if (!hasSearched || isFetching) return;
+    if (isRestoringRef.current || !hasSearched || isFetching) return;
     setFormError('');
     setRequestError('');
     setDirtyFilters(true);
@@ -680,6 +805,8 @@ const TravelScreen = ({ navigation }) => {
   }, [allResults, maxStops, sortOrder]);
 
   useEffect(() => {
+    if (isRestoringRef.current) return;
+
     const previous = previousNetworkFiltersRef.current;
     const networkChanged =
       previous.originIata !== originIata ||
@@ -915,13 +1042,34 @@ const TravelScreen = ({ navigation }) => {
   };
 
   const renderStatusState = () => {
+    const shouldShowEmptyState = hasSearched && !isFetching && visibleResults.length === 0;
+    const emptySubtitle =
+      destinationIata === null
+        ? 'Prova a selezionare un aeroporto specifico di arrivo.'
+        : 'Prova a cambiare date o destinazione.';
+
+    const handleEditFiltersPress = () => {
+      flatListRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+      closeDropdown();
+    };
+
+    const renderSkeletonList = () => (
+      <View style={styles.skeletonList}>
+        {[0, 1, 2].map((index) => (
+          <View key={`skeleton-${index}`} style={styles.skeletonCard}>
+            <View style={[styles.skeletonLine, styles.skeletonTitleLine]} />
+            <View style={[styles.skeletonLine, styles.skeletonTimesLine]} />
+            <View style={[styles.skeletonLine, styles.skeletonInfoLine]} />
+            <View style={styles.skeletonPriceRow}>
+              <View style={[styles.skeletonLine, styles.skeletonPriceLine]} />
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+
     if (isFetching) {
-      return (
-        <View style={styles.statusContainer}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-          <Text style={[styles.statusText, isRTL && styles.rtlText]}>{travelStrings.loadingState}</Text>
-        </View>
-      );
+      return renderSkeletonList();
     }
 
     if (status === STATUS.ERROR) {
@@ -935,8 +1083,16 @@ const TravelScreen = ({ navigation }) => {
       );
     }
 
-    if (hasSearched) {
-      return <Text style={[styles.emptyState, isRTL && styles.rtlText]}>{travelStrings.emptyState}</Text>;
+    if (shouldShowEmptyState) {
+      return (
+        <View style={styles.emptyStateCard}>
+          <Text style={[styles.emptyStateTitle, isRTL && styles.rtlText]}>Nessun volo trovato</Text>
+          <Text style={[styles.emptyStateSubtitle, isRTL && styles.rtlText]}>{emptySubtitle}</Text>
+          <Pressable style={styles.emptyStateButton} onPress={handleEditFiltersPress}>
+            <Text style={styles.emptyStateButtonLabel}>Modifica filtri</Text>
+          </Pressable>
+        </View>
+      );
     }
 
     return <Text style={[styles.emptyState, isRTL && styles.rtlText]}>{travelStrings.idleState}</Text>;
@@ -965,6 +1121,7 @@ const TravelScreen = ({ navigation }) => {
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <Navbar title={travelStrings.title} isRTL={isRTL} />
           <FlatList
+            ref={flatListRef}
             key={`flights-${listResetKey}`}
             data={isFetching ? [] : visibleResults}
             extraData={{ isFetching, sortOrder, maxStops, listResetKey, visibleLen: visibleResults.length }}
@@ -1478,6 +1635,79 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.muted,
     textAlign: 'center',
+  },
+  emptyStateCard: {
+    marginTop: theme.spacing.lg,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    ...theme.shadow.card,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  emptyStateSubtitle: {
+    fontSize: 14,
+    color: theme.colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyStateButton: {
+    marginTop: theme.spacing.xs,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: '#F9FAFB',
+  },
+  emptyStateButtonLabel: {
+    color: theme.colors.text,
+    fontWeight: '700',
+  },
+  skeletonList: {
+    marginTop: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  skeletonCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+    ...theme.shadow.card,
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+  },
+  skeletonTitleLine: {
+    width: '60%',
+    height: 16,
+  },
+  skeletonTimesLine: {
+    width: '50%',
+  },
+  skeletonInfoLine: {
+    width: '70%',
+  },
+  skeletonPriceRow: {
+    alignItems: 'flex-end',
+    marginTop: theme.spacing.xs,
+  },
+  skeletonPriceLine: {
+    width: '30%',
+    height: 18,
   },
   statusContainer: {
     marginTop: theme.spacing.lg,
