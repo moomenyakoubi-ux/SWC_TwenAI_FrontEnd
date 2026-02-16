@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AppHeaderCard from '../components/AppHeaderCard';
 import Card from '../components/Card';
 import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
@@ -37,12 +36,7 @@ const ExperiencesScreen = ({ navigation }) => {
               data={data}
               keyExtractor={(item) => item.id}
               ListHeaderComponent={(
-                <>
-                  <AppHeaderCard
-                    title={experiencesStrings.title}
-                    subtitle={activeTab === 'events' ? experiencesStrings.eventsTab : experiencesStrings.placesTab}
-                    isRTL={isRTL}
-                  />
+                <View>
                   <View style={[styles.tabRow, isRTL && styles.rowReverse]}>
                     {tabs.map((tabKey) => (
                       <TouchableOpacity
@@ -62,7 +56,7 @@ const ExperiencesScreen = ({ navigation }) => {
                       </TouchableOpacity>
                     ))}
                   </View>
-                </>
+                </View>
               )}
               renderItem={({ item }) => (
                 <View style={[styles.cardWrapper, isWeb && styles.cardWrapperWeb]}>
@@ -120,6 +114,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
   },
   webList: {

@@ -15,7 +15,6 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import AppHeaderCard from '../components/AppHeaderCard';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
 import { supabase } from '../lib/supabase';
@@ -45,7 +44,6 @@ const getInitials = (value) =>
 const ProfileScreen = () => {
   const { strings, isRTL, language } = useLanguage();
   const isWeb = Platform.OS === 'web';
-  const menuStrings = strings.menu;
   const navigation = useNavigation();
   const { user } = useSession();
   const { profile, loading, error, updateProfile, refresh } = useProfile();
@@ -546,11 +544,6 @@ const ProfileScreen = () => {
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
       <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]} showsVerticalScrollIndicator={false}>
-        <AppHeaderCard
-          title={menuStrings.userProfile}
-          subtitle={menuStrings.profileDescription}
-          isRTL={isRTL}
-        />
         <View style={styles.headerCard}>
           <View style={[styles.avatarWrapper, isRTL && styles.rowReverse]}>
             <View style={styles.avatarBorder}>

@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import AppHeaderCard from '../components/AppHeaderCard';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -555,7 +554,7 @@ const ChatScreen = ({ navigation, route }) => {
     [conversations, twensAiChat],
   );
 
-  const backHeaderSlot = activeChat ? (
+  const backButton = activeChat ? (
     <TouchableOpacity
       onPress={() => handleOpenChat(null)}
       style={styles.headerBackButton}
@@ -572,11 +571,6 @@ const ChatScreen = ({ navigation, route }) => {
 
   const ChatList = () => (
     <View style={[styles.listContainer, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
-      <AppHeaderCard
-        title={chatStrings.title}
-        subtitle={chatStrings.listTitle}
-        isRTL={isRTL}
-      />
       {conversationsLoading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={theme.colors.card} />
@@ -631,12 +625,7 @@ const ChatScreen = ({ navigation, route }) => {
       keyboardVerticalOffset={0}
     >
       <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
-        <AppHeaderCard
-          title={chatStrings.aiTitle}
-          subtitle={chatStrings.aiEmptyState}
-          leftSlot={backHeaderSlot}
-          isRTL={isRTL}
-        />
+        {backButton ? <View style={styles.backButtonRow}>{backButton}</View> : null}
         <ScrollView
           ref={aiScrollRef}
           contentContainerStyle={styles.messages}
@@ -680,12 +669,7 @@ const ChatScreen = ({ navigation, route }) => {
             keyboardVerticalOffset={0}
           >
             <View style={[styles.chatWrapper, isWeb && styles.webContentPadding, isWeb && styles.webMaxWidth]}>
-              <AppHeaderCard
-                title={activeChat.name}
-                subtitle={activeChatSubtitle}
-                leftSlot={backHeaderSlot}
-                isRTL={isRTL}
-              />
+              {backButton ? <View style={styles.backButtonRow}>{backButton}</View> : null}
               <View style={[styles.chatHero, isRTL && styles.rowReverse]}>
                 <View style={styles.avatarLarge}>
                   {activeChat.avatarUrl ? (
@@ -787,7 +771,8 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
     gap: theme.spacing.sm,
   },
   webMaxWidth: {
@@ -877,8 +862,12 @@ const styles = StyleSheet.create({
   chatWrapper: {
     flex: 1,
     paddingHorizontal: theme.spacing.lg,
-    paddingTop: 0,
+    paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.md,
+  },
+  backButtonRow: {
+    marginBottom: theme.spacing.sm,
+    alignSelf: 'flex-start',
   },
   headerBackButton: {
     width: 40,
