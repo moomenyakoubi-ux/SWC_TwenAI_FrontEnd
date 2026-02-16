@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Navbar from '../components/Navbar';
+import AppHeader from '../components/AppHeader';
 import Card from '../components/Card';
 import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
@@ -32,7 +32,7 @@ const ExperiencesScreen = ({ navigation }) => {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-          <Navbar title={experiencesStrings.title} isRTL={isRTL} />
+          <AppHeader title={experiencesStrings.title} isRTL={isRTL} />
           <View style={[styles.container, isWeb && styles.webContainer]}>
             <View style={[styles.tabRow, isRTL && styles.rowReverse]}>
               {tabs.map((tabKey) => (

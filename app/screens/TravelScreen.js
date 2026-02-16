@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Navbar from '../components/Navbar';
+import AppHeader from '../components/AppHeader';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -1119,7 +1119,7 @@ const TravelScreen = ({ navigation }) => {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
-          <Navbar title={travelStrings.title} isRTL={isRTL} />
+          <AppHeader title={travelStrings.title} isRTL={isRTL} />
           <FlatList
             ref={flatListRef}
             key={`flights-${listResetKey}`}

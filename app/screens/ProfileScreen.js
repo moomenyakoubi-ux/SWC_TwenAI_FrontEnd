@@ -15,7 +15,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import Navbar from '../components/Navbar';
+import AppHeader from '../components/AppHeader';
 import { useLanguage } from '../context/LanguageContext';
 import theme from '../styles/theme';
 import { supabase } from '../lib/supabase';
@@ -545,7 +545,7 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
-      <Navbar title={menuStrings.userProfile} isRTL={isRTL} isElevated />
+      <AppHeader title={menuStrings.userProfile} isRTL={isRTL} />
       <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerCard}>
           <View style={[styles.avatarWrapper, isRTL && styles.rowReverse]}>
