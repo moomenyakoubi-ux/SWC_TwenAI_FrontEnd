@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Alert, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Navbar from '../components/Navbar';
-import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
+import { useAppTheme } from '../context/ThemeContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import useSession from '../auth/useSession';
@@ -11,6 +11,8 @@ import useProfile from '../profile/useProfile';
 
 const LanguageScreen = () => {
   const { language, setLanguage, strings, isRTL } = useLanguage();
+  const { theme: appTheme } = useAppTheme();
+  const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const { user } = useSession();
   const { updateProfile } = useProfile();
   const isWeb = Platform.OS === 'web';
@@ -51,9 +53,7 @@ const LanguageScreen = () => {
                 style={[styles.option, isActive && styles.optionActive]}
                 onPress={() => handleSelectLanguage(option.code)}
               >
-                <Text
-                  style={[styles.optionLabel, isActive && styles.optionLabelActive, isRTL && styles.optionLabelRtl]}
-                >
+                <Text style={[styles.optionLabel, isActive && styles.optionLabelActive, isRTL && styles.optionLabelRtl]}>
                   {option.label}
                 </Text>
               </TouchableOpacity>
@@ -69,68 +69,70 @@ const LanguageScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  webSafeArea: {
-    paddingLeft: WEB_TAB_BAR_WIDTH,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.lg,
-  },
-  webContainer: {
-    paddingLeft: theme.spacing.xl,
-    paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
-    width: '100%',
-    maxWidth: 900,
-    alignSelf: 'center',
-  },
-  description: {
-    fontSize: 16,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.lg,
-  },
-  options: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-  },
-  option: {
-    flex: 1,
-    paddingVertical: theme.spacing.lg,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionActive: {
-    backgroundColor: theme.colors.secondary,
-  },
-  optionLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.colors.secondary,
-    textAlign: 'center',
-  },
-  optionLabelActive: {
-    color: theme.colors.card,
-  },
-  helper: {
-    marginTop: theme.spacing.lg,
-    fontSize: 14,
-    color: theme.colors.muted,
-  },
-  rtlText: {
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  optionLabelRtl: {
-    writingDirection: 'rtl',
-  },
-});
+const createStyles = (appTheme) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: appTheme.colors.background,
+    },
+    webSafeArea: {
+      paddingLeft: WEB_TAB_BAR_WIDTH,
+    },
+    container: {
+      flex: 1,
+      paddingHorizontal: appTheme.spacing.lg,
+      paddingTop: appTheme.spacing.lg,
+    },
+    webContainer: {
+      paddingLeft: appTheme.spacing.xl,
+      paddingRight: appTheme.spacing.xl + WEB_SIDE_MENU_WIDTH,
+      width: '100%',
+      maxWidth: 900,
+      alignSelf: 'center',
+    },
+    description: {
+      fontSize: 16,
+      color: appTheme.colors.text,
+      marginBottom: appTheme.spacing.lg,
+    },
+    options: {
+      flexDirection: 'row',
+      gap: appTheme.spacing.md,
+    },
+    option: {
+      flex: 1,
+      paddingVertical: appTheme.spacing.lg,
+      borderRadius: appTheme.radius.lg,
+      borderWidth: 1,
+      borderColor: appTheme.colors.secondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: appTheme.colors.card,
+    },
+    optionActive: {
+      backgroundColor: appTheme.colors.secondary,
+    },
+    optionLabel: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: appTheme.colors.secondary,
+      textAlign: 'center',
+    },
+    optionLabelActive: {
+      color: appTheme.colors.card,
+    },
+    helper: {
+      marginTop: appTheme.spacing.lg,
+      fontSize: 14,
+      color: appTheme.colors.muted,
+    },
+    rtlText: {
+      textAlign: 'right',
+      writingDirection: 'rtl',
+    },
+    optionLabelRtl: {
+      writingDirection: 'rtl',
+    },
+  });
 
 export default LanguageScreen;

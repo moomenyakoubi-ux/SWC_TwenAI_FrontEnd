@@ -14,8 +14,8 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Navbar from '../components/Navbar';
-import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
+import { useAppTheme } from '../context/ThemeContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { supabase } from '../lib/supabase';
@@ -35,6 +35,8 @@ const getInitials = (value) =>
 
 const AddContactScreen = () => {
   const { strings, isRTL } = useLanguage();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === 'web';
   const menuStrings = strings.menu;
   const navigation = useNavigation();
@@ -52,9 +54,7 @@ const AddContactScreen = () => {
 
   const updateFollowState = useCallback((profileId, isFollowing) => {
     setFollowMap((prev) => ({ ...prev, [profileId]: isFollowing }));
-    setResults((prev) =>
-      prev.map((item) => (item.id === profileId ? { ...item, isFollowing } : item)),
-    );
+    setResults((prev) => prev.map((item) => (item.id === profileId ? { ...item, isFollowing } : item)));
   }, []);
 
   const setFollowLoadingState = useCallback((profileId, value) => {
@@ -192,9 +192,7 @@ const AddContactScreen = () => {
           />
         </View>
 
-        {error ? (
-          <Text style={[styles.errorText, isRTL && styles.rtlText]}>{error.message}</Text>
-        ) : null}
+        {error ? <Text style={[styles.errorText, isRTL && styles.rtlText]}>{error.message}</Text> : null}
         {loading && results.length === 0 ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color={theme.colors.secondary} />
@@ -204,9 +202,7 @@ const AddContactScreen = () => {
         {!loading && filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={[styles.emptyTitle, isRTL && styles.rtlText]}>Nessun profilo trovato</Text>
-            <Text style={[styles.emptyText, isRTL && styles.rtlText]}>
-              Prova con un nome diverso.
-            </Text>
+            <Text style={[styles.emptyText, isRTL && styles.rtlText]}>Prova con un nome diverso.</Text>
           </View>
         ) : (
           <FlatList
@@ -237,13 +233,11 @@ const AddContactScreen = () => {
                 activeOpacity={0.85}
                 onPress={() => navigation.navigate('PublicProfile', { profileId: item.id })}
               >
-                <View style={[styles.avatar, { backgroundColor: 'rgba(12,27,51,0.08)' }]}>
+                <View style={[styles.avatar, { backgroundColor: theme.colors.surfaceMuted }]}>
                   {item.avatarUrl ? (
                     <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
                   ) : (
-                    <Text style={styles.avatarText}>
-                      {getInitials(item.fullName || 'U')}
-                    </Text>
+                    <Text style={styles.avatarText}>{getInitials(item.fullName || 'U')}</Text>
                   )}
                 </View>
                 <View style={styles.info}>
@@ -258,14 +252,8 @@ const AddContactScreen = () => {
                     <ActivityIndicator size="small" color={theme.colors.card} />
                   ) : (
                     <>
-                      <Ionicons
-                        name={item.isFollowing ? 'checkmark' : 'person-add'}
-                        size={18}
-                        color={theme.colors.card}
-                      />
-                      <Text style={styles.addButtonText}>
-                        {item.isFollowing ? 'Seguito' : 'Segui'}
-                      </Text>
+                      <Ionicons name={item.isFollowing ? 'checkmark' : 'person-add'} size={18} color={theme.colors.card} />
+                      <Text style={styles.addButtonText}>{item.isFollowing ? 'Seguito' : 'Segui'}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -278,146 +266,153 @@ const AddContactScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  webSafeArea: {
-    paddingLeft: WEB_TAB_BAR_WIDTH,
-  },
-  container: {
-    flex: 1,
-    padding: theme.spacing.lg,
-    gap: theme.spacing.md,
-  },
-  webContainer: {
-    paddingLeft: theme.spacing.xl,
-    paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
-    width: '100%',
-    maxWidth: 1100,
-    alignSelf: 'center',
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    backgroundColor: '#fff',
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 10,
-    ...theme.shadow.card,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: theme.colors.text,
-  },
-  listContent: {
-    paddingVertical: theme.spacing.md,
-    gap: theme.spacing.sm,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    backgroundColor: '#fff',
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    ...theme.shadow.card,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontWeight: '800',
-    color: theme.colors.secondary,
-  },
-  info: {
-    flex: 1,
-    gap: 4,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  meta: {
-    color: theme.colors.muted,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.colors.secondary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  addButtonText: {
-    color: theme.colors.card,
-    fontWeight: '700',
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-  },
-  loadingText: {
-    color: theme.colors.muted,
-  },
-  errorText: {
-    color: theme.colors.primary,
-    fontWeight: '700',
-  },
-  emptyState: {
-    backgroundColor: '#fff',
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    ...theme.shadow.card,
-  },
-  emptyTitle: {
-    fontWeight: '800',
-    fontSize: 16,
-    color: theme.colors.text,
-  },
-  emptyText: {
-    color: theme.colors.muted,
-    textAlign: 'center',
-  },
-  loadMoreButton: {
-    alignSelf: 'center',
-    marginTop: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
-  },
-  loadMoreText: {
-    color: theme.colors.text,
-    fontWeight: '700',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 25,
-  },
-  removeButton: {
-    backgroundColor: theme.colors.primary,
-  },
-  rowReverse: {
-    flexDirection: 'row-reverse',
-  },
-  rtlText: {
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-});
+const createStyles = (theme) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    webSafeArea: {
+      paddingLeft: WEB_TAB_BAR_WIDTH,
+    },
+    container: {
+      flex: 1,
+      padding: theme.spacing.lg,
+      gap: theme.spacing.md,
+    },
+    webContainer: {
+      paddingLeft: theme.spacing.xl,
+      paddingRight: theme.spacing.xl + WEB_SIDE_MENU_WIDTH,
+      width: '100%',
+      maxWidth: 1100,
+      alignSelf: 'center',
+    },
+    searchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.lg,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      ...theme.shadow.card,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 16,
+      color: theme.colors.text,
+    },
+    listContent: {
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.sm,
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.lg,
+      padding: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      ...theme.shadow.card,
+    },
+    avatar: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      fontWeight: '800',
+      color: theme.colors.secondary,
+    },
+    info: {
+      flex: 1,
+      gap: 4,
+    },
+    name: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: theme.colors.text,
+    },
+    meta: {
+      color: theme.colors.muted,
+    },
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.colors.secondary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
+    },
+    addButtonText: {
+      color: theme.colors.card,
+      fontWeight: '700',
+    },
+    loadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+    },
+    loadingText: {
+      color: theme.colors.muted,
+    },
+    errorText: {
+      color: theme.colors.primary,
+      fontWeight: '700',
+    },
+    emptyState: {
+      backgroundColor: theme.colors.card,
+      borderRadius: theme.radius.lg,
+      padding: theme.spacing.lg,
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      ...theme.shadow.card,
+    },
+    emptyTitle: {
+      fontWeight: '800',
+      fontSize: 16,
+      color: theme.colors.text,
+    },
+    emptyText: {
+      color: theme.colors.muted,
+      textAlign: 'center',
+    },
+    loadMoreButton: {
+      alignSelf: 'center',
+      marginTop: theme.spacing.md,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.sm,
+      borderRadius: theme.radius.md,
+      backgroundColor: theme.colors.surfaceMuted,
+    },
+    loadMoreText: {
+      color: theme.colors.text,
+      fontWeight: '700',
+    },
+    avatarImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 25,
+    },
+    removeButton: {
+      backgroundColor: theme.colors.primary,
+    },
+    rowReverse: {
+      flexDirection: 'row-reverse',
+    },
+    rtlText: {
+      textAlign: 'right',
+      writingDirection: 'rtl',
+    },
+  });
 
 export default AddContactScreen;

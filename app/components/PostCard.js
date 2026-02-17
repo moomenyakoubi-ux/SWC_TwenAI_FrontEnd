@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import theme from '../styles/theme';
 import { usePosts } from '../context/PostsContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 const PostCard = ({ post, isRTL, onPressAuthor }) => {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === 'web';
   const initials = useMemo(
     () =>
@@ -276,12 +278,14 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     ...theme.shadow.card,
   },
   header: {
@@ -326,12 +330,12 @@ const styles = StyleSheet.create({
   },
   editInput: {
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.1)',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     color: theme.colors.text,
-    backgroundColor: 'rgba(12,27,51,0.02)',
+    backgroundColor: theme.colors.surfaceMuted,
     minHeight: 70,
     marginBottom: theme.spacing.sm,
   },
@@ -346,7 +350,7 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: theme.radius.md,
     marginBottom: theme.spacing.sm,
-    backgroundColor: 'rgba(12,27,51,0.06)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   videoPlaceholder: {
     marginBottom: theme.spacing.sm,
@@ -354,8 +358,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.12)',
-    backgroundColor: 'rgba(12,27,51,0.04)',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.sm,
@@ -392,7 +396,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.12)',
+    borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
   },
   ownerButtonText: {
@@ -421,14 +425,14 @@ const styles = StyleSheet.create({
   comments: {
     marginTop: theme.spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(12,27,51,0.08)',
+    borderTopColor: theme.colors.divider,
     paddingTop: theme.spacing.sm,
     gap: theme.spacing.sm,
   },
   likesList: {
     marginTop: theme.spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(12,27,51,0.08)',
+    borderTopColor: theme.colors.divider,
     paddingTop: theme.spacing.sm,
     gap: theme.spacing.xs,
   },
@@ -445,7 +449,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -484,10 +488,11 @@ const styles = StyleSheet.create({
   commentInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.12)',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+    backgroundColor: theme.colors.card,
     color: theme.colors.text,
   },
   rowReverse: {

@@ -16,7 +16,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLanguage } from '../context/LanguageContext';
-import theme from '../styles/theme';
+import { useAppTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
@@ -43,6 +43,8 @@ const getInitials = (value) =>
 
 const ProfileScreen = () => {
   const { strings, isRTL, language } = useLanguage();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === 'web';
   const navigation = useNavigation();
   const { user } = useSession();
@@ -943,7 +945,7 @@ const ProfileScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -1015,6 +1017,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     ...theme.shadow.card,
     gap: theme.spacing.md,
   },
@@ -1051,12 +1055,12 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.1)',
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     color: theme.colors.text,
-    backgroundColor: 'rgba(12,27,51,0.02)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   languageRow: {
     flexDirection: 'row',
@@ -1122,12 +1126,12 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(12,27,51,0.1)',
+    borderColor: theme.colors.border,
   },
   previewFallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(12,27,51,0.02)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   multiline: {
     minHeight: 70,
@@ -1193,7 +1197,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(12,27,51,0.06)',
+    borderBottomColor: theme.colors.divider,
   },
   followInfo: {
     flex: 1,
@@ -1205,7 +1209,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1234,7 +1238,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: 8,
     borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   followButtonSmallActive: {
     backgroundColor: theme.colors.primary,
@@ -1252,7 +1256,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   loadMoreText: {
     color: theme.colors.text,
