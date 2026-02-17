@@ -3,8 +3,7 @@ const translations = {
     tabs: {
       home: 'Home',
       chat: 'Chat',
-      news: 'Notizie',
-      experiences: 'Esperienze',
+      news: 'Eventi e notizie',
       travel: 'Viaggi',
       language: 'Lingua',
     },
@@ -73,13 +72,10 @@ const translations = {
       backToList: 'Tutte le chat',
     },
     news: {
-      title: 'Notizie',
-      category: 'News',
-    },
-    experiences: {
-      title: 'Esperienze',
-      eventsTab: 'Eventi',
-      placesTab: 'Luoghi',
+      title: 'Eventi e notizie',
+      category: 'Notizia',
+      eventsSection: 'Eventi',
+      newsSection: 'Notizie',
     },
     travel: {
       title: 'Viaggi',
@@ -146,8 +142,7 @@ const translations = {
     tabs: {
       home: 'الرئيسية',
       chat: 'المحادثة',
-      news: 'الأخبار',
-      experiences: 'الفعاليات والأماكن',
+      news: 'الأحداث والأخبار',
       travel: 'السفر',
       language: 'اللغة',
     },
@@ -216,13 +211,10 @@ const translations = {
       backToList: 'كل الدردشات',
     },
     news: {
-      title: 'الأخبار',
-      category: 'أخبار',
-    },
-    experiences: {
-      title: 'الفعاليات والأماكن',
-      eventsTab: 'فعاليات',
-      placesTab: 'أماكن',
+      title: 'الأحداث والأخبار',
+      category: 'خبر',
+      eventsSection: 'الفعاليات',
+      newsSection: 'الأخبار',
     },
     travel: {
       title: 'السفر',

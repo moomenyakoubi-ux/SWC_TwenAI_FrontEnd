@@ -10,7 +10,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import HomeScreen from './app/screens/HomeScreen';
 import ChatScreen from './app/screens/ChatScreen';
 import NewsScreen from './app/screens/NewsScreen';
-import ExperiencesScreen from './app/screens/ExperiencesScreen';
 import TravelScreen from './app/screens/TravelScreen';
 import LanguageScreen from './app/screens/LanguageScreen';
 import ProfileScreen from './app/screens/ProfileScreen';
@@ -104,8 +103,6 @@ const AppTabs = () => {
         Home: 'home',
         Chat: 'chatbubble-ellipses',
         Notizie: 'newspaper',
-        Eventi: 'calendar',
-        Esperienze: 'calendar',
         Viaggi: 'airplane',
         Lingua: 'globe',
         Profilo: 'person',
@@ -146,7 +143,6 @@ const AppTabs = () => {
       <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: strings.tabs.home }} />
       <Tab.Screen name="Chat" component={ChatScreen} options={{ tabBarLabel: strings.tabs.chat }} />
       <Tab.Screen name="Notizie" component={NewsScreen} options={{ tabBarLabel: strings.tabs.news }} />
-      <Tab.Screen name="Esperienze" component={ExperiencesScreen} options={{ tabBarLabel: strings.tabs.experiences }} />
       <Tab.Screen name="Viaggi" component={TravelScreen} options={{ tabBarLabel: strings.tabs.travel }} />
       <Tab.Screen
         name="Lingua"

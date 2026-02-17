@@ -1,6 +1,8 @@
-import React from 'react';
-import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import Card from '../components/Card';
+import SectionHeader from '../components/SectionHeader';
+import fakeEvents from '../data/fakeEvents';
 import fakeNews from '../data/fakeNews';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
@@ -15,6 +17,15 @@ const NewsScreen = ({ navigation }) => {
   const newsStrings = strings.news;
   const menuStrings = strings.menu;
   const sidebarTitle = strings.home?.greeting || newsStrings.title;
+  const unifiedFeed = useMemo(
+    () => [
+      { id: 'section-events', itemType: 'section', title: newsStrings.eventsSection },
+      ...fakeEvents.map((item) => ({ ...item, itemType: 'event' })),
+      { id: 'section-news', itemType: 'section', title: newsStrings.newsSection },
+      ...fakeNews.map((item) => ({ ...item, itemType: 'news' })),
+    ],
+    [newsStrings.eventsSection, newsStrings.newsSection],
+  );
 
   return (
     <ImageBackground
@@ -27,16 +38,25 @@ const NewsScreen = ({ navigation }) => {
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <View style={styles.container}>
             <FlatList
-              data={fakeNews}
+              data={unifiedFeed}
               keyExtractor={(item) => item.id}
+              ListHeaderComponent={(
+                <View style={styles.pageHeader}>
+                  <Text style={[styles.pageTitle, isRTL && styles.rtlText]}>{newsStrings.title}</Text>
+                </View>
+              )}
               renderItem={({ item }) => (
-                <Card
-                  title={item.title}
-                  description={item.description}
-                  image={item.image}
-                  subtitle={newsStrings.category}
-                  isRTL={isRTL}
-                />
+                item.itemType === 'section' ? (
+                  <SectionHeader title={item.title} isRTL={isRTL} />
+                ) : (
+                  <Card
+                    title={item.title}
+                    description={item.description}
+                    image={item.image}
+                    subtitle={item.itemType === 'event' ? `${item.city} • ${item.date}` : newsStrings.category}
+                    isRTL={isRTL}
+                  />
+                )
               )}
               contentContainerStyle={[styles.list, isWeb && styles.webList]}
               showsVerticalScrollIndicator={false}
@@ -77,6 +97,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  pageHeader: {
+    marginBottom: theme.spacing.xs,
+  },
+  pageTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: theme.colors.secondary,
+    marginBottom: theme.spacing.md,
+  },
   list: {
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.md,
@@ -85,6 +114,10 @@ const styles = StyleSheet.create({
   webList: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
     paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
+  },
+  rtlText: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
 });
 
