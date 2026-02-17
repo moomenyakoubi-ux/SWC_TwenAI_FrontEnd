@@ -15,14 +15,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import Card from '../components/Card';
 import SectionHeader from '../components/SectionHeader';
 import PostCard from '../components/PostCard';
 import OfficialPostCard from '../components/OfficialPostCard';
 import SponsoredCard from '../components/SponsoredCard';
-import fakeNews from '../data/fakeNews';
-import fakeEvents from '../data/fakeEvents';
-import fakePlaces from '../data/fakePlaces';
+import EventNewsCard from '../components/EventNewsCard';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
@@ -32,8 +29,9 @@ import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
 const HOME_PAGE_SIZE = 20;
-
-const pickRandom = (items) => items[Math.floor(Math.random() * items.length)];
+const EVENT_NEWS_DETAIL_ROUTES = ['EventNewsDetail', 'NewsDetail', 'EventDetail'];
+const SYNTHETIC_HOME_ID_PATTERN = /^(post|official|sponsored|event[-_]news)-\d+$/i;
+const SEED_CONTENT_PATTERN = /\b(mock|seed|demo|fake)\b/i;
 
 const dedupeFeedItems = (items) => {
   const map = new Map();
@@ -52,6 +50,19 @@ const normalizeExternalUrl = (targetUrl) => {
   if (!raw) return '';
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw;
   return `https://${raw}`;
+};
+
+const resolveEventNewsDetailNavigation = (navigation) => {
+  let current = navigation;
+  while (current) {
+    const routeNames = current?.getState?.()?.routeNames;
+    if (Array.isArray(routeNames)) {
+      const routeName = EVENT_NEWS_DETAIL_ROUTES.find((candidate) => routeNames.includes(candidate));
+      if (routeName) return { navigator: current, routeName };
+    }
+    current = current?.getParent?.();
+  }
+  return null;
 };
 
 const HomeScreen = ({ navigation }) => {
@@ -75,15 +86,8 @@ const HomeScreen = ({ navigation }) => {
   const feedOffsetRef = useRef(0);
   const hasMoreFeedRef = useRef(true);
   const feedItemsCountRef = useRef(0);
-
-  const selection = useMemo(
-    () => ({
-      news: pickRandom(fakeNews),
-      event: pickRandom(fakeEvents),
-      place: pickRandom(fakePlaces),
-    }),
-    [],
-  );
+  const eventNewsDetailTarget = useMemo(() => resolveEventNewsDetailNavigation(navigation), [navigation]);
+  const hasEventNewsDetailRoute = Boolean(eventNewsDetailTarget?.routeName);
 
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -153,14 +157,29 @@ const HomeScreen = ({ navigation }) => {
         if (__DEV__) {
           const counts = incoming.reduce(
             (acc, current) => {
-              if (current?.kind === 'post') acc.post += 1;
-              if (current?.kind === 'official') acc.official += 1;
-              if (current?.kind === 'sponsored') acc.sponsored += 1;
+              const key = current?.kind || 'unknown';
+              acc[key] = (acc[key] || 0) + 1;
               return acc;
             },
-            { post: 0, official: 0, sponsored: 0 },
+            {},
           );
-          console.log('[home-feed] kind counts', counts, 'first item kind', incoming[0]?.kind || 'none');
+          const fakeIds = incoming
+            .filter((entry) => SYNTHETIC_HOME_ID_PATTERN.test(String(entry?.id || '')))
+            .map((entry) => `${entry?.kind || 'unknown'}:${entry?.id}`);
+          const seedLikeItems = incoming
+            .filter((entry) => {
+              const text = [entry?.title, entry?.excerpt, entry?.content, entry?.body].filter(Boolean).join(' ');
+              return SEED_CONTENT_PATTERN.test(text);
+            })
+            .map((entry) => `${entry?.kind || 'unknown'}:${entry?.id}`);
+
+          console.log('[home-feed] kind counts', counts, 'items', incoming.length);
+          if (fakeIds.length > 0) {
+            console.warn('[home-feed] synthetic ids detected', fakeIds.slice(0, 10));
+          }
+          if (seedLikeItems.length > 0) {
+            console.warn('[home-feed] seed-like content detected', seedLikeItems.slice(0, 10));
+          }
         }
 
         setHomeFeedError(null);
@@ -213,8 +232,37 @@ const HomeScreen = ({ navigation }) => {
 
   const keyExtractor = useCallback((item) => `${item.kind}:${item.id}`, []);
 
+  const openEventNewsItem = useCallback(
+    (item) => {
+      const targetUrl = String(item?.external_url || '').trim();
+      if (targetUrl) {
+        openExternalLink(targetUrl);
+        return;
+      }
+      if (!eventNewsDetailTarget) return;
+      eventNewsDetailTarget.navigator.navigate(eventNewsDetailTarget.routeName, {
+        eventNewsId: item.id,
+        item,
+      });
+    },
+    [eventNewsDetailTarget, openExternalLink],
+  );
+
   const renderFeedItem = useCallback(
     ({ item }) => {
+      if (item.kind === 'event_news') {
+        const hasExternalUrl = Boolean(String(item?.external_url || '').trim());
+        const onPress = hasExternalUrl || hasEventNewsDetailRoute ? () => openEventNewsItem(item) : undefined;
+        return (
+          <EventNewsCard
+            item={item}
+            isRTL={isRTL}
+            onPress={onPress}
+            accessibilityRole={hasExternalUrl ? 'link' : 'button'}
+          />
+        );
+      }
+
       if (item.kind === 'official') {
         return (
           <OfficialPostCard item={item} isRTL={isRTL} onPressTargetUrl={openExternalLink} />
@@ -227,6 +275,8 @@ const HomeScreen = ({ navigation }) => {
         );
       }
 
+      if (item.kind !== 'post') return null;
+
       return (
         <PostCard
           post={item}
@@ -237,39 +287,12 @@ const HomeScreen = ({ navigation }) => {
         />
       );
     },
-    [isRTL, navigation, openExternalLink],
+    [hasEventNewsDetailRoute, isRTL, navigation, openEventNewsItem, openExternalLink],
   );
 
   const listHeader = useMemo(
     () => (
       <View>
-        <SectionHeader title={homeStrings.featuredNews} isRTL={isRTL} />
-        <Card
-          title={selection.news.title}
-          description={selection.news.description}
-          image={selection.news.image}
-          subtitle={strings.news.category}
-          isRTL={isRTL}
-        />
-
-        <SectionHeader title={homeStrings.culturalEvents} isRTL={isRTL} />
-        <Card
-          title={selection.event.title}
-          description={selection.event.description}
-          image={selection.event.image}
-          subtitle={`${selection.event.city} • ${selection.event.date}`}
-          isRTL={isRTL}
-        />
-
-        <SectionHeader title={homeStrings.places} isRTL={isRTL} />
-        <Card
-          title={selection.place.name}
-          description={selection.place.description}
-          image={selection.place.image}
-          subtitle={`${selection.place.type} • ${selection.place.address}`}
-          isRTL={isRTL}
-        />
-
         <SectionHeader title={homeStrings.communityPosts} isRTL={isRTL} />
         {homeFeedError && homeFeedItems.length > 0 ? (
           <View style={styles.feedErrorBox}>
@@ -283,7 +306,7 @@ const HomeScreen = ({ navigation }) => {
         ) : null}
       </View>
     ),
-    [homeFeedError, homeFeedItems.length, homeStrings, isRTL, loadHomeFeed, retryLabel, selection, strings.news.category],
+    [homeFeedError, homeFeedItems.length, homeStrings.communityPosts, isRTL, loadHomeFeed, retryLabel],
   );
 
   const listEmpty = useMemo(() => {

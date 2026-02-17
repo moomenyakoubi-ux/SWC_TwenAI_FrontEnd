@@ -83,7 +83,24 @@ const DEFAULT_AVATAR_COLOR = '#E70013';
  */
 
 /**
- * @typedef {PostItem | OfficialItem | SponsoredItem} HomeFeedItem
+ * @typedef {Object} HomeEventNewsItem
+ * @property {'event_news'} kind
+ * @property {string} id
+ * @property {EventsNewsType} type
+ * @property {string} title
+ * @property {string|null} excerpt
+ * @property {string|null} content
+ * @property {string|null} image_url
+ * @property {string|null} location
+ * @property {string|null} starts_at
+ * @property {string|null} ends_at
+ * @property {string|null} external_url
+ * @property {boolean} pinned
+ * @property {string|null} created_at
+ */
+
+/**
+ * @typedef {PostItem | OfficialItem | SponsoredItem | HomeEventNewsItem} HomeFeedItem
  */
 
 const asString = (value) => (value == null ? '' : String(value).trim());
@@ -247,9 +264,10 @@ const normalizeMediaItem = (media) => {
   };
 };
 
-const normalizePostPayload = (rawPost, index) => {
+const normalizePostPayload = (rawPost) => {
   if (!rawPost) return null;
-  const postId = asString(rawPost.id || rawPost.post_id || rawPost.uuid || `post-${index}`);
+  const postId = asString(rawPost.id || rawPost._id || rawPost.post_id || rawPost.uuid);
+  if (!postId) return null;
   const author = asString(rawPost.author || rawPost.author_name || rawPost.full_name || 'Utente');
   const displayName = asString(rawPost.displayName || rawPost.display_name || author);
   const rawLikes = Array.isArray(rawPost.likes) ? rawPost.likes.map(normalizeLike).filter(Boolean) : [];
@@ -281,9 +299,10 @@ const normalizePostPayload = (rawPost, index) => {
   };
 };
 
-const normalizeOfficialItem = (rawItem, index) => {
+const normalizeOfficialItem = (rawItem) => {
   if (!rawItem) return null;
-  const id = asString(rawItem.id || rawItem.official_id || `official-${index}`);
+  const id = asString(rawItem.id || rawItem._id || rawItem.official_id);
+  if (!id) return null;
   const title = asString(rawItem.title || rawItem.headline);
   const body = asString(rawItem.body || rawItem.excerpt || rawItem.description || rawItem.content);
   if (!title && !body) return null;
@@ -299,9 +318,10 @@ const normalizeOfficialItem = (rawItem, index) => {
   };
 };
 
-const normalizeSponsoredItem = (rawItem, index) => {
+const normalizeSponsoredItem = (rawItem) => {
   if (!rawItem) return null;
-  const id = asString(rawItem.id || rawItem.sponsored_id || `sponsored-${index}`);
+  const id = asString(rawItem.id || rawItem._id || rawItem.sponsored_id);
+  if (!id) return null;
   const sponsorName = asString(rawItem.sponsor_name || rawItem.sponsorName || 'Partner');
   const title = asString(rawItem.title || rawItem.headline || sponsorName);
   const body = asString(rawItem.body || rawItem.excerpt || rawItem.description || '');
@@ -321,18 +341,50 @@ const normalizeSponsoredItem = (rawItem, index) => {
   };
 };
 
-const normalizeHomeFeedItem = (rawItem, index) => {
+const normalizeHomeEventNewsItem = (rawItem) => {
+  if (!rawItem) return null;
+  const id = asString(rawItem.id || rawItem._id || rawItem.event_news_id || rawItem.event_id || rawItem.news_id || rawItem.slug);
+  if (!id) return null;
+
+  const rawType = asString(rawItem.type || rawItem.item_type).toLowerCase();
+  const type = rawType === 'event' ? 'event' : 'news';
+  const title = asString(rawItem.title || rawItem.headline || rawItem.name);
+  const excerpt = asNullableString(rawItem.excerpt || rawItem.summary || rawItem.description);
+  const content = asNullableString(rawItem.content || rawItem.body || rawItem.text);
+  if (!title && !excerpt && !content) return null;
+
+  return {
+    kind: 'event_news',
+    id,
+    type,
+    title: title || excerpt || content || 'Aggiornamento',
+    excerpt,
+    content,
+    image_url: asNullableString(rawItem.image_url || rawItem.image || rawItem.cover_url),
+    location: asNullableString(rawItem.location || rawItem.venue || rawItem.city),
+    starts_at: asNullableString(rawItem.starts_at || rawItem.start_at || rawItem.start_date || rawItem.date),
+    ends_at: asNullableString(rawItem.ends_at || rawItem.end_at || rawItem.end_date),
+    external_url: asNullableString(rawItem.external_url || rawItem.target_url || rawItem.targetUrl || rawItem.url),
+    pinned: Boolean(rawItem.pinned),
+    created_at: asNullableString(rawItem.created_at || rawItem.createdAt),
+  };
+};
+
+const normalizeHomeFeedItem = (rawItem) => {
   const kind = asString(rawItem?.kind || rawItem?.item_kind || '').toLowerCase();
 
   if (kind === 'official') {
-    return normalizeOfficialItem(rawItem, index);
+    return normalizeOfficialItem(rawItem);
   }
   if (kind === 'sponsored') {
-    return normalizeSponsoredItem(rawItem, index);
+    return normalizeSponsoredItem(rawItem);
+  }
+  if (kind === 'event_news') {
+    return normalizeHomeEventNewsItem(rawItem);
   }
 
   const sourcePost = rawItem?.post || rawItem;
-  const post = normalizePostPayload(sourcePost, index);
+  const post = normalizePostPayload(sourcePost);
   if (!post) return null;
   return {
     kind: 'post',
@@ -380,13 +432,13 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
   });
 
   let items = getArrayFromPayload(payload, ['items', 'feed'])
-    .map((item, index) => normalizeHomeFeedItem(item, index))
+    .map((item) => normalizeHomeFeedItem(item))
     .filter(Boolean);
 
   if (!items.length) {
     const posts = getArrayFromPayload(payload, ['posts'])
-      .map((item, index) => {
-        const post = normalizePostPayload(item, index);
+      .map((item) => {
+        const post = normalizePostPayload(item);
         if (!post) return null;
         return {
           kind: 'post',
@@ -396,14 +448,18 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
       .filter(Boolean);
 
     const official = getArrayFromPayload(payload, ['official_posts', 'official'])
-      .map((item, index) => normalizeOfficialItem(item, index))
+      .map((item) => normalizeOfficialItem(item))
       .filter(Boolean);
 
     const sponsored = getArrayFromPayload(payload, ['sponsored_items', 'sponsored'])
-      .map((item, index) => normalizeSponsoredItem(item, index))
+      .map((item) => normalizeSponsoredItem(item))
       .filter(Boolean);
 
-    items = [...posts, ...official, ...sponsored];
+    const eventNews = getArrayFromPayload(payload, ['event_news', 'events_news'])
+      .map((item) => normalizeHomeEventNewsItem(item))
+      .filter(Boolean);
+
+    items = [...posts, ...official, ...sponsored, ...eventNews];
   }
 
   const responseLimit = toNumber(payload?.limit) ?? limit;
