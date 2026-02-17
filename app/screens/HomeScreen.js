@@ -4,7 +4,6 @@ import {
   Alert,
   Animated,
   FlatList,
-  Image,
   ImageBackground,
   Linking,
   Platform,
@@ -19,28 +18,30 @@ import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/Card';
 import SectionHeader from '../components/SectionHeader';
 import PostCard from '../components/PostCard';
+import OfficialPostCard from '../components/OfficialPostCard';
+import SponsoredCard from '../components/SponsoredCard';
 import fakeNews from '../data/fakeNews';
 import fakeEvents from '../data/fakeEvents';
 import fakePlaces from '../data/fakePlaces';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
-import { usePosts } from '../context/PostsContext';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import useSession from '../auth/useSession';
 import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
-const HOME_PAGE_SIZE = 10;
+const HOME_PAGE_SIZE = 20;
 
 const pickRandom = (items) => items[Math.floor(Math.random() * items.length)];
 
 const dedupeFeedItems = (items) => {
   const map = new Map();
   items.forEach((item) => {
-    if (!item?.id) return;
-    if (!map.has(item.id)) {
-      map.set(item.id, item);
+    if (!item?.id || !item?.kind) return;
+    const key = `${item.kind}:${item.id}`;
+    if (!map.has(key)) {
+      map.set(key, item);
     }
   });
   return Array.from(map.values());
@@ -60,9 +61,7 @@ const HomeScreen = ({ navigation }) => {
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
   const retryLabel = strings.travel?.retryLabel || 'Riprova';
-  const openLabel = 'Apri';
 
-  const { posts, refreshFeed } = usePosts();
   const [homeFeedItems, setHomeFeedItems] = useState([]);
   const [homeFeedError, setHomeFeedError] = useState(null);
   const [initialFeedLoading, setInitialFeedLoading] = useState(true);
@@ -86,14 +85,6 @@ const HomeScreen = ({ navigation }) => {
     [],
   );
 
-  const postsById = useMemo(() => {
-    const map = new Map();
-    posts.forEach((post) => {
-      map.set(String(post.id), post);
-    });
-    return map;
-  }, [posts]);
-
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: isMenuOpen ? 1 : 0,
@@ -111,13 +102,10 @@ const HomeScreen = ({ navigation }) => {
     Alert.alert(homeStrings.communityPosts, text);
   }, [homeStrings.communityPosts]);
 
-  const openSponsoredLink = useCallback(
+  const openExternalLink = useCallback(
     async (targetUrl) => {
       const normalized = normalizeExternalUrl(targetUrl);
-      if (!normalized) {
-        showSoftError('Link non disponibile.');
-        return;
-      }
+      if (!normalized) return;
 
       try {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -125,10 +113,6 @@ const HomeScreen = ({ navigation }) => {
           return;
         }
 
-        const canOpen = await Linking.canOpenURL(normalized);
-        if (!canOpen) {
-          throw new Error('URL non valido');
-        }
         await Linking.openURL(normalized);
       } catch (_error) {
         showSoftError('Impossibile aprire il link al momento.');
@@ -164,7 +148,20 @@ const HomeScreen = ({ navigation }) => {
         const incoming = Array.isArray(response?.items) ? response.items : [];
         const nextHasMore = incoming.length > 0 && Boolean(response?.hasMore);
         const nextOffsetValue =
-          typeof response?.nextOffset === 'number' ? response.nextOffset : nextOffset + incoming.length;
+          typeof response?.nextOffset === 'number' ? response.nextOffset : nextOffset + HOME_PAGE_SIZE;
+
+        if (__DEV__) {
+          const counts = incoming.reduce(
+            (acc, current) => {
+              if (current?.kind === 'post') acc.post += 1;
+              if (current?.kind === 'official') acc.official += 1;
+              if (current?.kind === 'sponsored') acc.sponsored += 1;
+              return acc;
+            },
+            { post: 0, official: 0, sponsored: 0 },
+          );
+          console.log('[home-feed] kind counts', counts, 'first item kind', incoming[0]?.kind || 'none');
+        }
 
         setHomeFeedError(null);
         hasMoreFeedRef.current = nextHasMore;
@@ -198,21 +195,15 @@ const HomeScreen = ({ navigation }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      if (refreshFeed) {
-        refreshFeed();
-      }
       loadHomeFeed({ reset: true, silent: true });
-    }, [loadHomeFeed, refreshFeed]),
+    }, [loadHomeFeed]),
   );
 
   const handleRefresh = useCallback(() => {
     feedOffsetRef.current = 0;
     hasMoreFeedRef.current = true;
-    if (refreshFeed) {
-      refreshFeed();
-    }
     loadHomeFeed({ reset: true });
-  }, [loadHomeFeed, refreshFeed]);
+  }, [loadHomeFeed]);
 
   const handleEndReached = useCallback(() => {
     if (initialFeedLoading || refreshingFeed || loadingMoreFeed) return;
@@ -220,64 +211,33 @@ const HomeScreen = ({ navigation }) => {
     loadHomeFeed();
   }, [initialFeedLoading, loadHomeFeed, loadingMoreFeed, refreshingFeed]);
 
-  const keyExtractor = useCallback((item) => item.id, []);
+  const keyExtractor = useCallback((item) => `${item.kind}:${item.id}`, []);
 
   const renderFeedItem = useCallback(
     ({ item }) => {
       if (item.kind === 'official') {
         return (
-          <View style={styles.officialCard}>
-            <View style={styles.officialBadgeRow}>
-              <Text style={styles.officialBadge}>TwensAI</Text>
-            </View>
-            {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.feedImage} /> : null}
-            <View style={styles.feedTextWrap}>
-              <Text style={[styles.feedTitle, isRTL && styles.rtlText]}>{item.title}</Text>
-              {item.body ? <Text style={[styles.feedBody, isRTL && styles.rtlText]}>{item.body}</Text> : null}
-            </View>
-          </View>
+          <OfficialPostCard item={item} isRTL={isRTL} onPressTargetUrl={openExternalLink} />
         );
       }
 
       if (item.kind === 'sponsored') {
-        const sponsoredUrl = normalizeExternalUrl(item.targetUrl);
-        const hasTargetUrl = Boolean(sponsoredUrl);
-
         return (
-          <View style={styles.sponsoredCard}>
-            <View style={styles.sponsoredHeader}>
-              <Text style={styles.sponsoredBadge}>Sponsorizzato</Text>
-              <Text style={[styles.sponsorName, isRTL && styles.rtlText]}>{item.sponsorName}</Text>
-            </View>
-            {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.feedImage} /> : null}
-            <View style={styles.feedTextWrap}>
-              <Text style={[styles.feedTitle, isRTL && styles.rtlText]}>{item.title}</Text>
-              {item.body ? <Text style={[styles.feedBody, isRTL && styles.rtlText]}>{item.body}</Text> : null}
-              {hasTargetUrl ? (
-                <Pressable style={styles.sponsoredCta} onPress={() => openSponsoredLink(sponsoredUrl)}>
-                  <Text style={styles.sponsoredCtaText}>{item.ctaLabel || openLabel}</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
+          <SponsoredCard item={item} isRTL={isRTL} onPressTargetUrl={openExternalLink} />
         );
       }
 
-      const fallbackPost = item.post;
-      const post = postsById.get(String(fallbackPost?.id)) || fallbackPost;
-      if (!post) return null;
-
       return (
         <PostCard
-          post={post}
+          post={item}
           isRTL={isRTL}
           onPressAuthor={
-            post.authorId ? () => navigation.navigate('PublicProfile', { profileId: post.authorId }) : undefined
+            item.authorId ? () => navigation.navigate('PublicProfile', { profileId: item.authorId }) : undefined
           }
         />
       );
     },
-    [isRTL, navigation, openLabel, openSponsoredLink, postsById],
+    [isRTL, navigation, openExternalLink],
   );
 
   const listHeader = useMemo(
@@ -511,99 +471,6 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     marginBottom: theme.spacing.lg,
     lineHeight: 20,
-  },
-  officialCard: {
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-    marginBottom: theme.spacing.md,
-    ...theme.shadow.card,
-  },
-  officialBadgeRow: {
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-  },
-  officialBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(231, 0, 19, 0.15)',
-    color: theme.colors.secondary,
-    fontWeight: '700',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  sponsoredCard: {
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-    marginBottom: theme.spacing.md,
-    ...theme.shadow.card,
-  },
-  sponsoredHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-  },
-  sponsoredBadge: {
-    backgroundColor: 'rgba(242, 163, 101, 0.22)',
-    color: '#8A1C09',
-    fontWeight: '700',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  sponsorName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.text,
-    flexShrink: 1,
-  },
-  feedImage: {
-    width: '100%',
-    height: 170,
-    marginTop: theme.spacing.sm,
-  },
-  feedTextWrap: {
-    padding: theme.spacing.md,
-    gap: theme.spacing.xs,
-  },
-  feedTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  feedBody: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  sponsoredCta: {
-    marginTop: theme.spacing.sm,
-    alignSelf: 'flex-start',
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.xs + 2,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radius.md,
-  },
-  sponsoredCtaText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
   },
   feedErrorBox: {
     backgroundColor: 'rgba(214, 69, 69, 0.08)',

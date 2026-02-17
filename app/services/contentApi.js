@@ -1,6 +1,6 @@
 import { getApiBaseUrl } from '../config/api';
 
-const DEFAULT_LIMIT = 12;
+const DEFAULT_LIMIT = 20;
 const DEFAULT_AVATAR_COLOR = '#E70013';
 
 /**
@@ -40,7 +40,19 @@ const DEFAULT_AVATAR_COLOR = '#E70013';
  * @typedef {Object} PostItem
  * @property {'post'} kind
  * @property {string} id
- * @property {HomePostPayload} post
+ * @property {string|null} authorId
+ * @property {string} author
+ * @property {string} displayName
+ * @property {string} avatarColor
+ * @property {string|null} authorAvatarUrl
+ * @property {string} time
+ * @property {string} content
+ * @property {string|null} image
+ * @property {Array<{ userId: string, name: string, initials: string }>} likes
+ * @property {number} likes_count
+ * @property {Array<{ id: string, authorId: string|null, author: string, initials: string, text: string, createdAt: string|null }>} comments
+ * @property {number} comments_count
+ * @property {Array<{ mediaType: string, publicUrl: string|null, width?: number|null, height?: number|null }>} mediaItems
  */
 
 /**
@@ -49,19 +61,25 @@ const DEFAULT_AVATAR_COLOR = '#E70013';
  * @property {string} id
  * @property {string} title
  * @property {string} body
- * @property {string|null} imageUrl
+ * @property {string|null} image_url
+ * @property {string|null} target_url
+ * @property {boolean} pinned
+ * @property {string|null} created_at
  */
 
 /**
  * @typedef {Object} SponsoredItem
  * @property {'sponsored'} kind
  * @property {string} id
- * @property {string} sponsorName
+ * @property {string} sponsor_name
  * @property {string} title
  * @property {string} body
- * @property {string|null} imageUrl
- * @property {string} ctaLabel
- * @property {string|null} targetUrl
+ * @property {string|null} image_url
+ * @property {string|null} target_url
+ * @property {string|null} start_date
+ * @property {string|null} end_date
+ * @property {number} priority
+ * @property {string|null} created_at
  */
 
 /**
@@ -128,13 +146,18 @@ const parseResponseBody = async (response) => {
   return text || null;
 };
 
-const requestApi = async ({ path, params, accessToken }) => {
+const requestApi = async ({ path, params, accessToken, debugTag }) => {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
     throw new Error('API base URL non configurata.');
   }
 
-  const response = await fetch(`${baseUrl}${path}${buildQueryString(params)}`, {
+  const requestUrl = `${baseUrl}${path}${buildQueryString(params)}`;
+  if (__DEV__ && debugTag) {
+    console.log(`[${debugTag}] GET ${requestUrl}`);
+  }
+
+  const response = await fetch(requestUrl, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
@@ -144,20 +167,23 @@ const requestApi = async ({ path, params, accessToken }) => {
 
   const body = await parseResponseBody(response);
   if (!response.ok) {
+    if (__DEV__ && debugTag) {
+      console.warn(`[${debugTag}] response not ok`, { url: requestUrl, status: response.status });
+    }
     if (body && typeof body === 'object') {
       throw new Error(body.message || body.error || `Request failed (${response.status}).`);
     }
     throw new Error(asString(body) || `Request failed (${response.status}).`);
   }
 
-  return body || {};
+  return { body: body || {}, status: response.status, url: requestUrl };
 };
 
 const computeHasMore = ({ payload, offset, limit, receivedCount }) => {
   const explicitHasMore = payload?.has_more ?? payload?.hasMore;
   if (typeof explicitHasMore === 'boolean') return explicitHasMore && receivedCount > 0;
 
-  const total = toNumber(payload?.total ?? payload?.count);
+  const total = toNumber(payload?.total ?? payload?.count ?? payload?.total_posts ?? payload?.totalPosts);
   if (typeof total === 'number') return offset + receivedCount < total;
 
   const nextOffset = toNumber(payload?.next_offset ?? payload?.nextOffset);
@@ -263,10 +289,13 @@ const normalizeOfficialItem = (rawItem, index) => {
   if (!title && !body) return null;
   return {
     kind: 'official',
-    id: `official-${id}`,
+    id,
     title: title || 'TwensAI',
     body,
-    imageUrl: asNullableString(rawItem.image_url || rawItem.image || rawItem.cover_url),
+    image_url: asNullableString(rawItem.image_url || rawItem.image || rawItem.cover_url),
+    target_url: asNullableString(rawItem.target_url || rawItem.targetUrl || rawItem.url),
+    pinned: Boolean(rawItem.pinned),
+    created_at: asNullableString(rawItem.created_at || rawItem.createdAt),
   };
 };
 
@@ -274,19 +303,21 @@ const normalizeSponsoredItem = (rawItem, index) => {
   if (!rawItem) return null;
   const id = asString(rawItem.id || rawItem.sponsored_id || `sponsored-${index}`);
   const sponsorName = asString(rawItem.sponsor_name || rawItem.sponsorName || 'Partner');
-  const ctaLabel = asString(rawItem.cta || rawItem.cta_label || rawItem.cta_text || 'Apri');
   const title = asString(rawItem.title || rawItem.headline || sponsorName);
   const body = asString(rawItem.body || rawItem.excerpt || rawItem.description || '');
 
   return {
     kind: 'sponsored',
-    id: `sponsored-${id}`,
-    sponsorName,
+    id,
+    sponsor_name: sponsorName,
     title,
     body,
-    imageUrl: asNullableString(rawItem.image_url || rawItem.image || rawItem.cover_url),
-    ctaLabel,
-    targetUrl: asNullableString(rawItem.target_url || rawItem.targetUrl || rawItem.url),
+    image_url: asNullableString(rawItem.image_url || rawItem.image || rawItem.cover_url),
+    target_url: asNullableString(rawItem.target_url || rawItem.targetUrl || rawItem.url),
+    start_date: asNullableString(rawItem.start_date || rawItem.startDate),
+    end_date: asNullableString(rawItem.end_date || rawItem.endDate),
+    priority: toNumber(rawItem.priority) ?? 0,
+    created_at: asNullableString(rawItem.created_at || rawItem.createdAt),
   };
 };
 
@@ -305,8 +336,7 @@ const normalizeHomeFeedItem = (rawItem, index) => {
   if (!post) return null;
   return {
     kind: 'post',
-    id: `post-${post.id}`,
-    post,
+    ...post,
   };
 };
 
@@ -315,7 +345,7 @@ const normalizeHomeFeedItem = (rawItem, index) => {
  * @returns {Promise<{ items: EventsNewsItem[], hasMore: boolean, nextOffset: number }>}
  */
 export const fetchEventsNews = async ({ limit = DEFAULT_LIMIT, offset = 0, type, accessToken } = {}) => {
-  const payload = await requestApi({
+  const { body: payload } = await requestApi({
     path: '/api/content/events-news',
     params: {
       limit,
@@ -342,10 +372,11 @@ export const fetchEventsNews = async ({ limit = DEFAULT_LIMIT, offset = 0, type,
  * @returns {Promise<{ items: HomeFeedItem[], hasMore: boolean, nextOffset: number }>}
  */
 export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessToken } = {}) => {
-  const payload = await requestApi({
+  const { body: payload } = await requestApi({
     path: '/api/feed/home',
     params: { limit, offset },
     accessToken,
+    debugTag: 'home-feed',
   });
 
   let items = getArrayFromPayload(payload, ['items', 'feed'])
@@ -359,8 +390,7 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
         if (!post) return null;
         return {
           kind: 'post',
-          id: `post-${post.id}`,
-          post,
+          ...post,
         };
       })
       .filter(Boolean);
@@ -376,9 +406,28 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     items = [...posts, ...official, ...sponsored];
   }
 
+  const responseLimit = toNumber(payload?.limit) ?? limit;
+  const responseOffset = toNumber(payload?.offset) ?? offset;
+  const totalPosts = toNumber(payload?.totalPosts ?? payload?.total_posts ?? payload?.total);
+  const adEvery = toNumber(payload?.adEvery ?? payload?.ad_every);
+  const computedHasMore = computeHasMore({
+    payload,
+    offset: responseOffset,
+    limit: responseLimit,
+    receivedCount: items.length,
+  });
+  const hasMore =
+    typeof totalPosts === 'number'
+      ? responseOffset + responseLimit < totalPosts
+      : computedHasMore;
+
   return {
     items,
-    hasMore: computeHasMore({ payload, offset, limit, receivedCount: items.length }),
-    nextOffset: offset + items.length,
+    limit: responseLimit,
+    offset: responseOffset,
+    totalPosts,
+    adEvery,
+    hasMore,
+    nextOffset: responseOffset + responseLimit,
   };
 };
