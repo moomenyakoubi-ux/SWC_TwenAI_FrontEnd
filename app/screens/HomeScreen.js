@@ -240,6 +240,9 @@ const HomeScreen = ({ navigation }) => {
       }
 
       if (item.kind === 'sponsored') {
+        const sponsoredUrl = normalizeExternalUrl(item.targetUrl);
+        const hasTargetUrl = Boolean(sponsoredUrl);
+
         return (
           <View style={styles.sponsoredCard}>
             <View style={styles.sponsoredHeader}>
@@ -250,13 +253,11 @@ const HomeScreen = ({ navigation }) => {
             <View style={styles.feedTextWrap}>
               <Text style={[styles.feedTitle, isRTL && styles.rtlText]}>{item.title}</Text>
               {item.body ? <Text style={[styles.feedBody, isRTL && styles.rtlText]}>{item.body}</Text> : null}
-              <Pressable
-                style={[styles.sponsoredCta, !item.targetUrl && styles.sponsoredCtaDisabled]}
-                onPress={() => openSponsoredLink(item.targetUrl)}
-                disabled={!item.targetUrl}
-              >
-                <Text style={styles.sponsoredCtaText}>{item.ctaLabel || openLabel}</Text>
-              </Pressable>
+              {hasTargetUrl ? (
+                <Pressable style={styles.sponsoredCta} onPress={() => openSponsoredLink(sponsoredUrl)}>
+                  <Text style={styles.sponsoredCtaText}>{item.ctaLabel || openLabel}</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         );
@@ -598,9 +599,6 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xs + 2,
     paddingHorizontal: theme.spacing.md,
     borderRadius: theme.radius.md,
-  },
-  sponsoredCtaDisabled: {
-    opacity: 0.45,
   },
   sponsoredCtaText: {
     color: '#fff',
