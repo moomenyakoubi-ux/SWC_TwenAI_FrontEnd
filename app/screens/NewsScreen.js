@@ -1,31 +1,230 @@
-import React, { useMemo } from 'react';
-import { FlatList, ImageBackground, Platform, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import Card from '../components/Card';
-import SectionHeader from '../components/SectionHeader';
-import fakeEvents from '../data/fakeEvents';
-import fakeNews from '../data/fakeNews';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  ImageBackground,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import WebSidebar, { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import useSession from '../auth/useSession';
+import { fetchEventsNews } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
+const PAGE_SIZE = 10;
+
+const dedupeById = (items) => {
+  const map = new Map();
+  items.forEach((item) => {
+    if (!item?.id) return;
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
+  });
+  return Array.from(map.values());
+};
+
+const formatStartAt = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+};
 
 const NewsScreen = ({ navigation }) => {
   const isWeb = Platform.OS === 'web';
+  const { session } = useSession();
   const { strings, isRTL } = useLanguage();
   const newsStrings = strings.news;
   const menuStrings = strings.menu;
   const sidebarTitle = strings.home?.greeting || newsStrings.title;
-  const unifiedFeed = useMemo(
-    () => [
-      { id: 'section-events', itemType: 'section', title: newsStrings.eventsSection },
-      ...fakeEvents.map((item) => ({ ...item, itemType: 'event' })),
-      { id: 'section-news', itemType: 'section', title: newsStrings.newsSection },
-      ...fakeNews.map((item) => ({ ...item, itemType: 'news' })),
-    ],
-    [newsStrings.eventsSection, newsStrings.newsSection],
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+  const isLoadingRef = useRef(false);
+  const itemsCountRef = useRef(0);
+
+  const retryLabel = strings.travel?.retryLabel || 'Riprova';
+  const loadingLabel = 'Caricamento contenuti...';
+  const emptyLabel = 'Nessun contenuto disponibile al momento.';
+  const errorLabel = 'Non siamo riusciti a caricare gli aggiornamenti.';
+
+  const showSoftError = useCallback(
+    (message) => {
+      const text = message || errorLabel;
+      if (Platform.OS === 'web') {
+        console.warn('[news] request failed:', text);
+        return;
+      }
+      Alert.alert(newsStrings.title, text);
+    },
+    [errorLabel, newsStrings.title],
   );
+
+  const loadItems = useCallback(
+    async ({ reset = false, silent = false } = {}) => {
+      if (isLoadingRef.current) return;
+      if (!reset && !hasMoreRef.current) return;
+
+      isLoadingRef.current = true;
+      const nextOffset = reset ? 0 : offsetRef.current;
+      const hasItems = itemsCountRef.current > 0;
+
+      if (reset) {
+        setRefreshing(hasItems);
+        if (!hasItems) setInitialLoading(true);
+      } else if (nextOffset > 0) {
+        setLoadingMore(true);
+      } else {
+        setInitialLoading(true);
+      }
+
+      try {
+        const response = await fetchEventsNews({
+          limit: PAGE_SIZE,
+          offset: nextOffset,
+          accessToken: session?.access_token || null,
+        });
+        const incoming = Array.isArray(response?.items) ? response.items : [];
+        const resolvedHasMore = incoming.length > 0 && Boolean(response?.hasMore);
+        const resolvedNextOffset =
+          typeof response?.nextOffset === 'number' ? response.nextOffset : nextOffset + incoming.length;
+
+        setError(null);
+        hasMoreRef.current = resolvedHasMore;
+        offsetRef.current = resolvedNextOffset;
+
+        if (reset) {
+          const deduped = dedupeById(incoming);
+          itemsCountRef.current = deduped.length;
+          setItems(deduped);
+        } else {
+          setItems((prev) => {
+            const merged = dedupeById([...prev, ...incoming]);
+            itemsCountRef.current = merged.length;
+            return merged;
+          });
+        }
+      } catch (requestError) {
+        setError(requestError);
+        if (!silent) {
+          showSoftError(requestError?.message);
+        }
+      } finally {
+        isLoadingRef.current = false;
+        setInitialLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [session?.access_token, showSoftError],
+  );
+
+  useEffect(() => {
+    offsetRef.current = 0;
+    hasMoreRef.current = true;
+    itemsCountRef.current = 0;
+    setItems([]);
+    loadItems({ reset: true, silent: true });
+  }, [loadItems]);
+
+  const handleRefresh = useCallback(() => {
+    offsetRef.current = 0;
+    hasMoreRef.current = true;
+    loadItems({ reset: true });
+  }, [loadItems]);
+
+  const handleEndReached = useCallback(() => {
+    if (initialLoading || refreshing || loadingMore) return;
+    if (!hasMoreRef.current) return;
+    loadItems();
+  }, [initialLoading, loadingMore, refreshing, loadItems]);
+
+  const keyExtractor = useCallback((item) => item.id, []);
+
+  const renderItem = useCallback(
+    ({ item }) => {
+      const isEvent = item.type === 'event';
+      const eventMeta = isEvent
+        ? [item.location, formatStartAt(item.starts_at)].filter(Boolean).join(' • ')
+        : null;
+      const badgeLabel = isEvent ? newsStrings.eventsSection : newsStrings.newsSection;
+
+      return (
+        <View style={styles.newsCard}>
+          {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.cardImage} /> : null}
+          <View style={styles.cardContent}>
+            <View style={styles.badgeRow}>
+              <Text style={[styles.typeBadge, isEvent ? styles.eventBadge : styles.newsBadge]}>{badgeLabel}</Text>
+            </View>
+            <Text style={[styles.cardTitle, isRTL && styles.rtlText]}>{item.title}</Text>
+            {item.excerpt ? <Text style={[styles.cardExcerpt, isRTL && styles.rtlText]}>{item.excerpt}</Text> : null}
+            {isEvent && eventMeta ? <Text style={[styles.eventMeta, isRTL && styles.rtlText]}>{eventMeta}</Text> : null}
+          </View>
+        </View>
+      );
+    },
+    [isRTL, newsStrings.eventsSection, newsStrings.newsSection],
+  );
+
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.pageHeader}>
+        <Text style={[styles.pageTitle, isRTL && styles.rtlText]}>{newsStrings.title}</Text>
+        {error && items.length > 0 ? (
+          <View style={styles.errorRow}>
+            <Text style={[styles.errorText, isRTL && styles.rtlText]}>{errorLabel}</Text>
+            <Pressable style={styles.retryButton} onPress={() => loadItems({ reset: true })}>
+              <Text style={styles.retryButtonText}>{retryLabel}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    ),
+    [error, errorLabel, isRTL, items.length, loadItems, newsStrings.title, retryLabel],
+  );
+
+  const listEmpty = useMemo(() => {
+    if (initialLoading) {
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text style={[styles.emptyText, isRTL && styles.rtlText]}>{loadingLabel}</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyState}>
+        <Text style={[styles.emptyText, isRTL && styles.rtlText]}>{error ? errorLabel : emptyLabel}</Text>
+        <Pressable style={styles.retryButton} onPress={() => loadItems({ reset: true })}>
+          <Text style={styles.retryButtonText}>{retryLabel}</Text>
+        </Pressable>
+      </View>
+    );
+  }, [emptyLabel, error, errorLabel, initialLoading, isRTL, loadItems, loadingLabel, retryLabel]);
+
+  const listFooter = useMemo(() => {
+    if (!loadingMore) return <View style={styles.footerSpacer} />;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={theme.colors.primary} />
+      </View>
+    );
+  }, [loadingMore]);
 
   return (
     <ImageBackground
@@ -38,26 +237,16 @@ const NewsScreen = ({ navigation }) => {
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <View style={styles.container}>
             <FlatList
-              data={unifiedFeed}
-              keyExtractor={(item) => item.id}
-              ListHeaderComponent={(
-                <View style={styles.pageHeader}>
-                  <Text style={[styles.pageTitle, isRTL && styles.rtlText]}>{newsStrings.title}</Text>
-                </View>
-              )}
-              renderItem={({ item }) => (
-                item.itemType === 'section' ? (
-                  <SectionHeader title={item.title} isRTL={isRTL} />
-                ) : (
-                  <Card
-                    title={item.title}
-                    description={item.description}
-                    image={item.image}
-                    subtitle={item.itemType === 'event' ? `${item.city} • ${item.date}` : newsStrings.category}
-                    isRTL={isRTL}
-                  />
-                )
-              )}
+              data={items}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              ListHeaderComponent={listHeader}
+              ListEmptyComponent={listEmpty}
+              ListFooterComponent={listFooter}
+              onEndReached={handleEndReached}
+              onEndReachedThreshold={0.35}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
               contentContainerStyle={[styles.list, isWeb && styles.webList]}
               showsVerticalScrollIndicator={false}
             />
@@ -98,7 +287,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pageHeader: {
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.md,
   },
   pageTitle: {
     fontSize: 30,
@@ -114,6 +303,109 @@ const styles = StyleSheet.create({
   webList: {
     paddingRight: theme.spacing.lg + WEB_SIDE_MENU_WIDTH,
     paddingLeft: theme.spacing.lg + WEB_TAB_BAR_WIDTH,
+  },
+  newsCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.lg,
+    marginBottom: theme.spacing.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
+  },
+  cardImage: {
+    width: '100%',
+    height: 170,
+  },
+  cardContent: {
+    padding: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    marginBottom: theme.spacing.xs,
+  },
+  typeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  eventBadge: {
+    color: '#8A1C09',
+    backgroundColor: 'rgba(242, 163, 101, 0.25)',
+  },
+  newsBadge: {
+    color: theme.colors.secondary,
+    backgroundColor: 'rgba(231, 0, 19, 0.12)',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: theme.colors.text,
+  },
+  cardExcerpt: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.muted,
+  },
+  eventMeta: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.secondary,
+    marginTop: theme.spacing.xs,
+  },
+  errorRow: {
+    backgroundColor: 'rgba(214, 69, 69, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(214, 69, 69, 0.25)',
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  errorText: {
+    flex: 1,
+    color: theme.colors.danger || '#d64545',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  emptyState: {
+    paddingVertical: theme.spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+  },
+  emptyText: {
+    color: theme.colors.text,
+    opacity: 0.9,
+    textAlign: 'center',
+    maxWidth: 320,
+    lineHeight: 20,
+  },
+  retryButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs + 2,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  footerLoader: {
+    paddingVertical: theme.spacing.md,
+  },
+  footerSpacer: {
+    height: theme.spacing.md,
   },
   rtlText: {
     textAlign: 'right',

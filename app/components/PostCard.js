@@ -27,6 +27,14 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     () => post.likes?.some((user) => user.userId === selfUser.id),
     [post.likes, selfUser.id],
   );
+  const likesCount = useMemo(
+    () => (typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0),
+    [post.likes, post.likes_count],
+  );
+  const commentsCount = useMemo(
+    () => (typeof post.comments_count === 'number' ? post.comments_count : post.comments?.length || 0),
+    [post.comments, post.comments_count],
+  );
   const likePending = isLikePending?.(post.id);
 
   const [showComments, setShowComments] = useState(false);
@@ -176,11 +184,11 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
       </View>
 
       <TouchableOpacity activeOpacity={0.8} onPress={() => setShowLikes((prev) => !prev)}>
-        <Text style={styles.likesText}>Piace a {post.likes?.length || 0} persone</Text>
+        <Text style={styles.likesText}>Piace a {likesCount} persone</Text>
       </TouchableOpacity>
 
       <TouchableOpacity activeOpacity={0.8} onPress={() => setShowComments((prev) => !prev)}>
-        <Text style={styles.viewComments}>Visualizza tutti i {post.comments?.length || 0} commenti</Text>
+        <Text style={styles.viewComments}>Visualizza tutti i {commentsCount} commenti</Text>
       </TouchableOpacity>
 
       {isOwner ? (
