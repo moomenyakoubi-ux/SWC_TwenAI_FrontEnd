@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import theme from '../styles/theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 const COLLAPSED_TAB_BAR_WIDTH = 88;
 const EXPANDED_TAB_BAR_WIDTH = 244;
@@ -11,6 +11,8 @@ export const WEB_TAB_BAR_WIDTH = COLLAPSED_TAB_BAR_WIDTH;
 const WebTabBar = ({ state, descriptors, navigation }) => {
   if (Platform.OS !== 'web') return null;
 
+  const { theme: appTheme } = useAppTheme();
+  const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredRouteKey, setHoveredRouteKey] = useState(null);
   const widthAnim = useRef(new Animated.Value(COLLAPSED_TAB_BAR_WIDTH)).current;
@@ -39,7 +41,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
 
   const labelGap = widthAnim.interpolate({
     inputRange: [COLLAPSED_TAB_BAR_WIDTH, EXPANDED_TAB_BAR_WIDTH],
-    outputRange: [0, theme.spacing.md],
+    outputRange: [0, appTheme.spacing.md],
     extrapolate: 'clamp',
   });
 
@@ -88,7 +90,11 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
             ? options.tabBarIcon({
                 focused: isFocused,
                 size: 22,
-                color: isFocused ? theme.colors.card : isHovered ? theme.colors.primary : theme.colors.secondary,
+                color: isFocused
+                  ? appTheme.colors.card
+                  : isHovered
+                    ? appTheme.colors.primary
+                    : appTheme.colors.secondary,
               })
             : null;
 
@@ -110,8 +116,17 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
             ]}
           >
             {icon}
-            <Animated.View style={[styles.labelWrap, { width: labelWidth, marginLeft: labelGap, opacity: labelOpacity }]}>
-              <Text style={[styles.label, isFocused && styles.labelActive, !isFocused && isHovered && styles.labelHovered]} numberOfLines={1}>
+            <Animated.View
+              style={[styles.labelWrap, { width: labelWidth, marginLeft: labelGap, opacity: labelOpacity }]}
+            >
+              <Text
+                style={[
+                  styles.label,
+                  isFocused && styles.labelActive,
+                  !isFocused && isHovered && styles.labelHovered,
+                ]}
+                numberOfLines={1}
+              >
                 {labelText}
               </Text>
             </Animated.View>
@@ -122,59 +137,60 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    position: 'fixed',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.sm,
-    backgroundColor: theme.colors.card,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(12,27,51,0.08)',
-    gap: theme.spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    ...theme.shadow.card,
-    zIndex: 30,
-  },
-  item: {
-    width: '100%',
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.xs,
-    borderRadius: theme.radius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 52,
-  },
-  itemCollapsed: {
-    justifyContent: 'center',
-  },
-  itemExpanded: {
-    justifyContent: 'flex-start',
-  },
-  itemActive: {
-    backgroundColor: theme.colors.secondary,
-  },
-  itemHovered: {
-    backgroundColor: 'rgba(231, 0, 19, 0.10)',
-  },
-  labelWrap: {
-    overflow: 'hidden',
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.text,
-    textAlign: 'left',
-  },
-  labelHovered: {
-    color: theme.colors.primary,
-  },
-  labelActive: {
-    color: theme.colors.card,
-  },
-});
+const createStyles = (appTheme) =>
+  StyleSheet.create({
+    container: {
+      position: 'fixed',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      paddingVertical: appTheme.spacing.lg,
+      paddingHorizontal: appTheme.spacing.sm,
+      backgroundColor: appTheme.colors.card,
+      borderRightWidth: 1,
+      borderRightColor: appTheme.colors.divider,
+      gap: appTheme.spacing.sm,
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      ...appTheme.shadow.card,
+      zIndex: 30,
+    },
+    item: {
+      width: '100%',
+      paddingVertical: appTheme.spacing.sm,
+      paddingHorizontal: appTheme.spacing.xs,
+      borderRadius: appTheme.radius.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 52,
+    },
+    itemCollapsed: {
+      justifyContent: 'center',
+    },
+    itemExpanded: {
+      justifyContent: 'flex-start',
+    },
+    itemActive: {
+      backgroundColor: appTheme.colors.secondary,
+    },
+    itemHovered: {
+      backgroundColor: 'rgba(231, 0, 19, 0.10)',
+    },
+    labelWrap: {
+      overflow: 'hidden',
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: appTheme.colors.text,
+      textAlign: 'left',
+    },
+    labelHovered: {
+      color: appTheme.colors.primary,
+    },
+    labelActive: {
+      color: appTheme.colors.card,
+    },
+  });
 
 export default WebTabBar;

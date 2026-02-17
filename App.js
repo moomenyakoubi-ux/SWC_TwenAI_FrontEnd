@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
 import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -26,7 +26,7 @@ import { LanguageProvider, useLanguage } from './app/context/LanguageContext';
 import { ContactsProvider } from './app/context/ContactsContext';
 import ContactsScreen from './app/screens/ContactsScreen';
 import { PostsProvider } from './app/context/PostsContext';
-import theme from './app/styles/theme';
+import { ThemeProvider, useAppTheme } from './app/context/ThemeContext';
 import WebTabBar from './app/components/WebTabBar';
 import WebSidebar from './app/components/WebSidebar';
 import AuthScreen from './app/screens/AuthScreen';
@@ -77,18 +77,9 @@ const replaceAuthPath = (route) => {
   window.history.replaceState({}, '', nextPath);
 };
 
-const navigationTheme = {
-  ...NavigationTheme,
-  colors: {
-    ...NavigationTheme.colors,
-    background: theme.colors.background,
-    primary: theme.colors.primary,
-    text: theme.colors.text,
-  },
-};
-
 const AppTabs = () => {
   const { strings, isRTL } = useLanguage();
+  const { theme: appTheme } = useAppTheme();
   const isWeb = Platform.OS === 'web';
   const navigation = useNavigation();
   const hiddenTabOptions = {
@@ -119,16 +110,17 @@ const AppTabs = () => {
       const iconName = icons[route.name] || 'ellipse';
       return <Ionicons name={iconName} size={size} color={color} />;
     },
-    tabBarActiveTintColor: theme.colors.primary,
-    tabBarInactiveTintColor: theme.colors.muted,
+    tabBarActiveTintColor: appTheme.colors.primary,
+    tabBarInactiveTintColor: appTheme.colors.muted,
     tabBarStyle: {
       height: Platform.OS === 'web' ? 70 : 80,
       paddingBottom: Platform.OS === 'web' ? 14 : 18,
       paddingTop: 12,
-      backgroundColor: '#fff',
-      borderTopWidth: 0,
+      backgroundColor: appTheme.colors.card,
+      borderTopWidth: 1,
+      borderTopColor: appTheme.colors.border,
       marginBottom: Platform.OS === 'android' ? 6 : 0,
-      ...theme.shadow.card,
+      ...appTheme.shadow.card,
     },
     headerShown: false,
   });
@@ -220,12 +212,32 @@ const AppTabs = () => {
   );
 };
 
-const MainApp = () => (
-  <NavigationContainer theme={navigationTheme}>
-    <StatusBar barStyle="light-content" />
-    <AppTabs />
-  </NavigationContainer>
-);
+const MainApp = () => {
+  const { theme: appTheme, isDark } = useAppTheme();
+  const navigationTheme = useMemo(
+    () => ({
+      ...NavigationTheme,
+      dark: isDark,
+      colors: {
+        ...NavigationTheme.colors,
+        background: appTheme.colors.background,
+        primary: appTheme.colors.primary,
+        text: appTheme.colors.text,
+        card: appTheme.colors.card,
+        border: appTheme.colors.border,
+        notification: appTheme.colors.primary,
+      },
+    }),
+    [appTheme, isDark],
+  );
+
+  return (
+    <NavigationContainer theme={navigationTheme}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
+      <AppTabs />
+    </NavigationContainer>
+  );
+};
 
 const AuthFlow = ({ session, forcedRoute, onExit, initialRoute }) => {
   const [route, setRoute] = useState(() => initialRoute || getAuthRouteFromPath());
@@ -282,6 +294,7 @@ const ProfileLanguageSync = () => {
 };
 
 const AppContent = () => {
+  const { theme: appTheme } = useAppTheme();
   const { user, loading, session } = useSession();
   const [isUpdatePasswordEntry] = useState(() => getAuthRouteFromPath() === AUTH_ROUTES.update);
   const [forcedAuthRoute, setForcedAuthRoute] = useState(null);
@@ -320,8 +333,8 @@ const AppContent = () => {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color={theme.colors.secondary} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: appTheme.colors.background }}>
+        <ActivityIndicator size="large" color={appTheme.colors.secondary} />
       </View>
     );
   }
@@ -354,14 +367,16 @@ export default function App() {
   }, []);
 
   return (
-    <LanguageProvider>
-      <ContactsProvider>
-        <PostsProvider>
-          <SafeAreaProvider>
-            <AppContent />
-          </SafeAreaProvider>
-        </PostsProvider>
-      </ContactsProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <ContactsProvider>
+          <PostsProvider>
+            <SafeAreaProvider>
+              <AppContent />
+            </SafeAreaProvider>
+          </PostsProvider>
+        </ContactsProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import theme from '../styles/theme';
+import { useAppTheme } from '../context/ThemeContext';
 
 export const WEB_SIDE_MENU_WIDTH = 380;
 
@@ -35,6 +35,8 @@ const resolveCurrentRouteName = (navigation) => {
 const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
   if (Platform.OS !== 'web') return null;
 
+  const { theme: appTheme } = useAppTheme();
+  const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const [hoveredRoute, setHoveredRoute] = useState(null);
   const [activeRoute, setActiveRoute] = useState(() => resolveCurrentRouteName(navigation));
 
@@ -53,22 +55,22 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
   }, [navigation]);
 
   return (
-    <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, Platform.OS === 'web' && styles.sideMenuWeb]}>
+    <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, styles.sideMenuWeb]}>
       <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{title}</Text>
       <View style={styles.menuItems}>
         {getMenuItems(menuStrings).map((item) => {
           const isActive = activeRoute === item.route;
           const isHovered = hoveredRoute === item.route;
           const iconColor = isActive
-            ? theme.colors.primary
+            ? appTheme.colors.primary
             : isHovered
-              ? theme.colors.secondary
-              : 'rgba(14, 20, 27, 0.8)';
+              ? appTheme.colors.secondary
+              : appTheme.colors.muted;
           const labelColor = isActive
-            ? theme.colors.primary
+            ? appTheme.colors.primary
             : isHovered
-              ? theme.colors.text
-              : 'rgba(14, 20, 27, 0.88)';
+              ? appTheme.colors.text
+              : appTheme.colors.text;
 
           return (
             <TouchableOpacity
@@ -90,9 +92,7 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
               }}
             >
               <Ionicons name={item.icon} size={22} color={iconColor} style={styles.menuIcon} />
-              <Text style={[styles.menuLabel, isRTL && styles.rtlText, { color: labelColor }]}>
-                {item.label}
-              </Text>
+              <Text style={[styles.menuLabel, isRTL && styles.rtlText, { color: labelColor }]}>{item.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -101,87 +101,90 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  sideMenu: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: WEB_SIDE_MENU_WIDTH,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.xl + theme.spacing.sm,
-    backgroundColor: theme.colors.card,
-    ...theme.shadow.card,
-    gap: theme.spacing.lg,
-  },
-  sideMenuWeb: {
-    position: 'fixed',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    height: '100vh',
-    zIndex: 9999,
-  },
-  sideMenuRtl: {
-    alignItems: 'flex-end',
-  },
-  menuTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: theme.colors.text,
-    marginTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
-  },
-  menuItems: {
-    gap: theme.spacing.sm,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-  },
-  menuItemWeb: {
-    minHeight: 44,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-    transitionProperty: 'background-color, transform',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
-  },
-  menuItemHover: {
-    backgroundColor: 'rgba(231, 0, 19, 0.08)',
-  },
-  menuItemActive: {
-    backgroundColor: 'rgba(231, 0, 19, 0.14)',
-  },
-  menuItemHoverShift: {
-    transform: [{ translateX: 2 }],
-  },
-  menuItemHoverShiftRtl: {
-    transform: [{ translateX: -2 }],
-  },
-  menuItemRtl: {
-    flexDirection: 'row-reverse',
-  },
-  menuIcon: {
-    width: 24,
-    textAlign: 'center',
-    transitionProperty: 'color',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
-  },
-  menuLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    transitionProperty: 'color',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
-  },
-  rtlText: {
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-});
+const createStyles = (appTheme) =>
+  StyleSheet.create({
+    sideMenu: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      right: 0,
+      width: WEB_SIDE_MENU_WIDTH,
+      paddingHorizontal: appTheme.spacing.lg,
+      paddingTop: appTheme.spacing.xl + appTheme.spacing.sm,
+      backgroundColor: appTheme.colors.card,
+      borderLeftWidth: 1,
+      borderLeftColor: appTheme.colors.divider,
+      ...appTheme.shadow.card,
+      gap: appTheme.spacing.lg,
+    },
+    sideMenuWeb: {
+      position: 'fixed',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      height: '100vh',
+      zIndex: 9999,
+    },
+    sideMenuRtl: {
+      alignItems: 'flex-end',
+    },
+    menuTitle: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: appTheme.colors.text,
+      marginTop: Platform.OS === 'android' ? appTheme.spacing.sm : 0,
+    },
+    menuItems: {
+      gap: appTheme.spacing.sm,
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: appTheme.spacing.md,
+    },
+    menuItemWeb: {
+      minHeight: 44,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      backgroundColor: 'transparent',
+      transitionProperty: 'background-color, transform',
+      transitionDuration: '200ms',
+      transitionTimingFunction: 'ease-out',
+    },
+    menuItemHover: {
+      backgroundColor: 'rgba(231, 0, 19, 0.08)',
+    },
+    menuItemActive: {
+      backgroundColor: 'rgba(231, 0, 19, 0.14)',
+    },
+    menuItemHoverShift: {
+      transform: [{ translateX: 2 }],
+    },
+    menuItemHoverShiftRtl: {
+      transform: [{ translateX: -2 }],
+    },
+    menuItemRtl: {
+      flexDirection: 'row-reverse',
+    },
+    menuIcon: {
+      width: 24,
+      textAlign: 'center',
+      transitionProperty: 'color',
+      transitionDuration: '200ms',
+      transitionTimingFunction: 'ease-out',
+    },
+    menuLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      transitionProperty: 'color',
+      transitionDuration: '200ms',
+      transitionTimingFunction: 'ease-out',
+    },
+    rtlText: {
+      textAlign: 'right',
+      writingDirection: 'rtl',
+    },
+  });
 
 export default WebSidebar;
