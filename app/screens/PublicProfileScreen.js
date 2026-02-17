@@ -14,7 +14,7 @@ import {
 import Navbar from '../components/Navbar';
 import { useLanguage } from '../context/LanguageContext';
 import { useFocusEffect } from '@react-navigation/native';
-import theme from '../styles/theme';
+import { useAppTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import useSession from '../auth/useSession';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
@@ -37,6 +37,8 @@ const getInitials = (value) =>
 
 const PublicProfileScreen = ({ route, navigation }) => {
   const { strings, isRTL } = useLanguage();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === 'web';
   const profileId = route.params?.profileId;
   const isValidProfileId = isUuid(profileId);
@@ -81,12 +83,12 @@ const PublicProfileScreen = ({ route, navigation }) => {
 
   const getAvatarColor = useCallback((seed) => {
     if (!seed) return theme.colors.secondary;
-    const palette = [theme.colors.primary, theme.colors.secondary, theme.colors.accent, '#3B82F6', '#10B981'];
+    const palette = [theme.colors.primary, theme.colors.secondary, theme.colors.accent, theme.colors.danger, theme.colors.muted];
     const hash = String(seed)
       .split('')
       .reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return palette[hash % palette.length];
-  }, []);
+  }, [theme]);
 
   const resolveAvatarUrl = useCallback((value) => {
     if (!value) return null;
@@ -918,7 +920,7 @@ const PublicProfileScreen = ({ route, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -942,6 +944,8 @@ const styles = StyleSheet.create({
   headerCard: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: theme.spacing.md,
     ...theme.shadow.card,
     flexDirection: 'row',
@@ -951,7 +955,7 @@ const styles = StyleSheet.create({
   avatarBorder: {
     padding: 4,
     borderRadius: 64,
-    backgroundColor: 'rgba(12,27,51,0.06)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   avatar: {
     width: 88,
@@ -982,6 +986,8 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: theme.spacing.md,
     ...theme.shadow.card,
     gap: theme.spacing.sm,
@@ -1009,7 +1015,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: theme.spacing.sm,
     borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   headerButtonActive: {
     backgroundColor: theme.colors.secondary,
@@ -1037,7 +1043,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     paddingVertical: theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(12,27,51,0.06)',
+    borderBottomColor: theme.colors.divider,
   },
   followInfo: {
     flex: 1,
@@ -1049,7 +1055,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1075,7 +1081,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
     paddingVertical: 8,
     borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   followButtonSmallActive: {
     backgroundColor: theme.colors.primary,
@@ -1093,7 +1099,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingVertical: theme.spacing.sm,
     borderRadius: theme.radius.md,
-    backgroundColor: 'rgba(12,27,51,0.08)',
+    backgroundColor: theme.colors.surfaceMuted,
   },
   loadMoreText: {
     color: theme.colors.text,
