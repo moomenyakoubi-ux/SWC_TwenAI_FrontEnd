@@ -38,6 +38,26 @@ const dedupeLikeUsers = (items) => {
   return Array.from(map.values());
 };
 
+const isValidCurrentUserId = (value) => {
+  const id = String(value || '').trim();
+  if (!id || id === 'self-user') return null;
+  return id;
+};
+
+const areLikeUsersEqual = (left, right) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftItem = left[index] || {};
+    const rightItem = right[index] || {};
+    if (String(leftItem.user_id || '') !== String(rightItem.user_id || '')) return false;
+    if (String(leftItem.full_name || '') !== String(rightItem.full_name || '')) return false;
+    if (String(leftItem.avatar_url || '') !== String(rightItem.avatar_url || '')) return false;
+  }
+  return true;
+};
+
 const PostCard = ({ post, isRTL, onPressAuthor }) => {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -55,6 +75,9 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   const authorAvatarUrl = post.authorAvatarUrl || null;
 
   const { toggleLike, addComment, selfUser, updatePost, deletePost, isLikePending } = usePosts();
+  const currentUserId = isValidCurrentUserId(selfUser?.id);
+  const currentUserName = String(selfUser?.name || 'Tu').trim() || 'Tu';
+  const currentUserAvatar = selfUser?.avatarUrl || null;
   const isOwner = post.authorId && post.authorId === selfUser.id;
 
   const liked = useMemo(() => {
@@ -132,10 +155,63 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   const likesLoadingForPost = Boolean(isLikesLoadingByPostId[post.id]);
   const likesLoadingMoreForPost = Boolean(isLikesLoadingMoreByPostId[post.id]);
   const likesErrorForPost = likesErrorByPostId[post.id] || null;
-  const likesForPost = Array.isArray(likesByPostId[post.id]) ? likesByPostId[post.id] : [];
-  const likesTotalForPost =
-    typeof likesTotalByPostId[post.id] === 'number' ? likesTotalByPostId[post.id] : optimisticLikesCount;
+  const hasLikesCacheForPost = Array.isArray(likesByPostId[post.id]);
+  const likesForPost = hasLikesCacheForPost ? likesByPostId[post.id] : [];
+  const likesTotalFromState =
+    typeof likesTotalByPostId[post.id] === 'number' ? likesTotalByPostId[post.id] : null;
+  const likesTotalForPost = likesTotalFromState ?? optimisticLikesCount;
   const canLoadMoreLikes = likesTotalForPost > likesForPost.length;
+  const shouldShowLikesEmptyState =
+    likesTotalForPost === 0 || (likesForPost.length === 0 && likesCount === 0 && optimisticLikesCount === 0);
+
+  const buildCurrentUserLike = useCallback(() => {
+    if (!currentUserId) return null;
+    return {
+      user_id: currentUserId,
+      full_name: currentUserName || 'Tu',
+      avatar_url: currentUserAvatar,
+      created_at: new Date().toISOString(),
+    };
+  }, [currentUserAvatar, currentUserId, currentUserName]);
+
+  const ensureMyLikeConsistency = useCallback(
+    (items, total, likedByMe, likesCountForPost, { compensateMissingSelf = false } = {}) => {
+      const normalized = dedupeLikeUsers(items || []);
+      const numericTotal = typeof total === 'number' ? total : 0;
+      const numericLikesCount = typeof likesCountForPost === 'number' ? likesCountForPost : 0;
+
+      if (!currentUserId) {
+        return {
+          items: normalized,
+          total: Math.max(numericTotal, numericLikesCount, normalized.length),
+        };
+      }
+
+      const hasSelf = normalized.some((entry) => entry?.user_id === currentUserId);
+      let nextItems = normalized;
+
+      if (likedByMe && !hasSelf) {
+        const selfLike = buildCurrentUserLike();
+        if (selfLike) {
+          nextItems = [selfLike, ...normalized];
+        }
+      }
+      if (!likedByMe && hasSelf) {
+        nextItems = normalized.filter((entry) => entry?.user_id !== currentUserId);
+      }
+
+      let nextTotal = Math.max(numericTotal, numericLikesCount, nextItems.length);
+      if (likedByMe && !hasSelf && compensateMissingSelf) {
+        nextTotal = Math.max(nextTotal, numericTotal + 1, numericLikesCount);
+      }
+      if (!likedByMe && hasSelf) {
+        nextTotal = Math.max(Math.max(numericTotal - 1, 0), numericLikesCount, nextItems.length);
+      }
+
+      return { items: nextItems, total: nextTotal };
+    },
+    [buildCurrentUserLike, currentUserId],
+  );
 
   const likesAnimatedStyle = useMemo(() => {
     const animatedValue = getLikesAnimationValue(post.id);
@@ -173,6 +249,32 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     setOptimisticLikesCount(likesCount);
     setOptimisticCommentsCount(commentsCount);
   }, [commentsCount, liked, likesCount, post.id]);
+
+  useEffect(() => {
+    if (!hasLikesCacheForPost) return;
+    const currentItems = likesForPost;
+    const currentTotal = likesTotalFromState ?? optimisticLikesCount;
+    const reconciled = ensureMyLikeConsistency(
+      currentItems,
+      currentTotal,
+      optimisticLiked,
+      optimisticLikesCount,
+    );
+    if (!areLikeUsersEqual(currentItems, reconciled.items)) {
+      setLikesByPostId((prev) => ({ ...prev, [post.id]: reconciled.items }));
+    }
+    if (reconciled.total !== currentTotal) {
+      setLikesTotalByPostId((prev) => ({ ...prev, [post.id]: reconciled.total }));
+    }
+  }, [
+    ensureMyLikeConsistency,
+    hasLikesCacheForPost,
+    likesForPost,
+    likesTotalFromState,
+    optimisticLiked,
+    optimisticLikesCount,
+    post.id,
+  ]);
 
   const handleSaveEdit = async () => {
     if (!isOwner || updating) return;
@@ -273,17 +375,23 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         offset,
       });
       const incoming = Array.isArray(response?.items) ? response.items : [];
-      setLikesByPostId((prev) => {
-        const existing = append && Array.isArray(prev[postId]) ? prev[postId] : [];
-        const merged = append ? dedupeLikeUsers([...existing, ...incoming]) : incoming;
-        return { ...prev, [postId]: merged };
-      });
+      const existing = append && Array.isArray(likesByPostId[postId]) ? likesByPostId[postId] : [];
+      const merged = append ? dedupeLikeUsers([...existing, ...incoming]) : incoming;
       const totalFromApi = typeof response?.total === 'number' ? response.total : null;
       const loadedCount = append ? offset + incoming.length : incoming.length;
-      setLikesTotalByPostId((prev) => ({
-        ...prev,
-        [postId]: totalFromApi ?? Math.max(loadedCount, prev[postId] || 0),
-      }));
+      const existingTotal = typeof likesTotalByPostId[postId] === 'number'
+        ? likesTotalByPostId[postId]
+        : optimisticLikesCount;
+      const totalCandidate = totalFromApi ?? Math.max(existingTotal, loadedCount);
+      const reconciled = ensureMyLikeConsistency(
+        merged,
+        totalCandidate,
+        optimisticLiked,
+        optimisticLikesCount,
+        { compensateMissingSelf: typeof totalFromApi === 'number' },
+      );
+      setLikesByPostId((prev) => ({ ...prev, [postId]: reconciled.items }));
+      setLikesTotalByPostId((prev) => ({ ...prev, [postId]: reconciled.total }));
       setLikesOffsetByPostId((prev) => ({ ...prev, [postId]: loadedCount }));
     } catch (error) {
       if (error?.code === 'AUTH_REQUIRED') {
@@ -298,7 +406,13 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         setIsLikesLoadingByPostId((prev) => ({ ...prev, [postId]: false }));
       }
     }
-  }, []);
+  }, [
+    ensureMyLikeConsistency,
+    likesByPostId,
+    likesTotalByPostId,
+    optimisticLiked,
+    optimisticLikesCount,
+  ]);
 
   const handleToggleComments = async () => {
     const nextOpen = !commentsOpenForPost;
@@ -315,6 +429,23 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
       animateLikesSection(post.id, 1);
       if (typeof likesByPostId[post.id] === 'undefined') {
         await fetchLikes(post.id, 0, false);
+      } else {
+        const cachedItems = Array.isArray(likesByPostId[post.id]) ? likesByPostId[post.id] : [];
+        const cachedTotal = typeof likesTotalByPostId[post.id] === 'number'
+          ? likesTotalByPostId[post.id]
+          : optimisticLikesCount;
+        const reconciled = ensureMyLikeConsistency(
+          cachedItems,
+          cachedTotal,
+          optimisticLiked,
+          optimisticLikesCount,
+        );
+        if (!areLikeUsersEqual(cachedItems, reconciled.items)) {
+          setLikesByPostId((prev) => ({ ...prev, [post.id]: reconciled.items }));
+        }
+        if (reconciled.total !== cachedTotal) {
+          setLikesTotalByPostId((prev) => ({ ...prev, [post.id]: reconciled.total }));
+        }
       }
       return;
     }
@@ -332,51 +463,28 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
 
   const handleToggleLike = () => {
     if (likePending) return;
+    const nextLiked = !optimisticLiked;
+    const nextLikesCount = nextLiked ? optimisticLikesCount + 1 : Math.max(optimisticLikesCount - 1, 0);
+    setOptimisticLiked(nextLiked);
+    setOptimisticLikesCount(nextLikesCount);
 
-    setOptimisticLiked((previousLiked) => {
-      const nextLiked = !previousLiked;
-      setOptimisticLikesCount((previousCount) => {
-        if (nextLiked) return previousCount + 1;
-        return Math.max(previousCount - 1, 0);
+    if (isLikesOpenByPostId[post.id]) {
+      const existing = Array.isArray(likesByPostId[post.id]) ? likesByPostId[post.id] : [];
+      const predictedTotal = nextLikesCount;
+      const reconciled = ensureMyLikeConsistency(
+        existing,
+        predictedTotal,
+        nextLiked,
+        nextLikesCount,
+      );
+      setLikesByPostId((prev) => ({ ...prev, [post.id]: reconciled.items }));
+      setLikesTotalByPostId((prev) => ({ ...prev, [post.id]: reconciled.total }));
+      setLikesOffsetByPostId((prev) => {
+        const currentOffset = typeof prev[post.id] === 'number' ? prev[post.id] : existing.length;
+        const nextOffset = Math.max(currentOffset, reconciled.items.length);
+        return { ...prev, [post.id]: nextOffset };
       });
-
-      if (isLikesOpenByPostId[post.id]) {
-        setLikesByPostId((prev) => {
-          const existing = Array.isArray(prev[post.id]) ? prev[post.id] : [];
-          const hasSelf = existing.some((item) => item.user_id === selfUser.id);
-          let next = existing;
-
-          if (nextLiked && !hasSelf) {
-            next = [
-              {
-                user_id: selfUser.id,
-                full_name: 'Tu',
-                avatar_url: null,
-                created_at: new Date().toISOString(),
-              },
-              ...existing,
-            ];
-          }
-          if (!nextLiked && hasSelf) {
-            next = existing.filter((item) => item.user_id !== selfUser.id);
-          }
-
-          if (next !== existing) {
-            setLikesOffsetByPostId((offsetPrev) => ({ ...offsetPrev, [post.id]: next.length }));
-          }
-
-          return { ...prev, [post.id]: next };
-        });
-
-        setLikesTotalByPostId((prev) => {
-          const currentTotal = typeof prev[post.id] === 'number' ? prev[post.id] : optimisticLikesCount;
-          const nextTotal = nextLiked ? currentTotal + 1 : Math.max(currentTotal - 1, 0);
-          return { ...prev, [post.id]: nextTotal };
-        });
-      }
-
-      return nextLiked;
-    });
+    }
 
     toggleLike(post.id);
   };
@@ -542,13 +650,14 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
             </View>
           ) : null}
 
-          {!likesLoadingForPost && !likesErrorForPost && likesTotalForPost === 0 ? (
+          {!likesLoadingForPost && !likesErrorForPost && shouldShowLikesEmptyState ? (
             <Text style={styles.emptyCommentsText}>Nessun mi piace.</Text>
           ) : null}
 
           {!likesLoadingForPost && !likesErrorForPost
             ? likesForPost.map((user, index) => {
               const fullName = String(user.full_name || 'Utente').trim() || 'Utente';
+              const isCurrentUserLike = Boolean(currentUserId) && user.user_id === currentUserId;
               const userInitials =
                 fullName
                   .split(' ')
@@ -566,7 +675,10 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
                       <Text style={styles.commentAvatarText}>{userInitials}</Text>
                     )}
                   </View>
-                  <Text style={styles.commentAuthor}>{fullName}</Text>
+                  <Text style={styles.commentAuthor}>
+                    {fullName}
+                    {isCurrentUserLike ? <Text style={styles.likeSelfBadge}> (TU)</Text> : null}
+                  </Text>
                 </View>
               );
             })
@@ -940,6 +1052,10 @@ const createStyles = (theme) => StyleSheet.create({
   commentAuthor: {
     fontWeight: '700',
     color: theme.colors.text,
+  },
+  likeSelfBadge: {
+    color: theme.colors.muted,
+    fontWeight: '700',
   },
   commentMeta: {
     flexDirection: 'row',

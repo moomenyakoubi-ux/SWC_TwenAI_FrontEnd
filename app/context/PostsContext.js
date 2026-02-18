@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import useSession from '../auth/useSession';
+import useCurrentUserProfile from '../auth/useCurrentUserProfile';
 import theme from '../styles/theme';
 
 const PostsContext = createContext();
@@ -44,6 +45,11 @@ const formatTime = (value) => {
 
 export const PostsProvider = ({ children }) => {
   const { user, loading } = useSession();
+  const { currentUserId, currentUserName, currentUserAvatar } = useCurrentUserProfile({
+    id: user?.id || null,
+    full_name: user?.user_metadata?.full_name || user?.email || 'Tu',
+    avatar_url: user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null,
+  });
   const [posts, setPosts] = useState([]);
   const [feedError, setFeedError] = useState(null);
   const [page, setPage] = useState(0);
@@ -796,9 +802,25 @@ export const PostsProvider = ({ children }) => {
       feedError,
       loadingMore,
       hasMore,
-      selfUser: { id: user?.id || 'self-user', name: 'Tu', initials: 'TU' },
+      selfUser: {
+        id: currentUserId || user?.id || 'self-user',
+        name: currentUserName || 'Tu',
+        avatarUrl: currentUserAvatar || null,
+        initials: getInitials(currentUserName || 'Tu') || 'TU',
+      },
     }),
-    [posts, user?.id, feedError, fetchPosts, loadingMore, hasMore, likePending],
+    [
+      currentUserAvatar,
+      currentUserId,
+      currentUserName,
+      posts,
+      user?.id,
+      feedError,
+      fetchPosts,
+      loadingMore,
+      hasMore,
+      likePending,
+    ],
   );
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>;
