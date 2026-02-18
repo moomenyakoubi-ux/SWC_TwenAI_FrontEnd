@@ -16,6 +16,7 @@ import ProfileScreen from './app/screens/ProfileScreen';
 import AccountSettingsScreen from './app/screens/AccountSettingsScreen';
 import AddContactScreen from './app/screens/AddContactScreen';
 import PublicProfileScreen from './app/screens/PublicProfileScreen';
+import ImageCropScreen from './app/screens/ImageCropScreen';
 import PrivacyPolicyScreen from './app/screens/PrivacyPolicyScreen';
 import TermsScreen from './app/screens/TermsScreen';
 import CopyrightScreen from './app/screens/CopyrightScreen';
@@ -106,6 +107,7 @@ const AppTabs = () => {
         AiUsage: 'sparkles',
         Support: 'call',
         Contacts: 'people',
+        ImageCrop: 'crop',
       };
       const iconName = icons[route.name] || 'ellipse';
       return <Ionicons name={iconName} size={size} color={color} />;
@@ -166,6 +168,11 @@ const AppTabs = () => {
           </ErrorBoundary>
         )}
       </Tab.Screen>
+      <Tab.Screen
+        name="ImageCrop"
+        component={ImageCropScreen}
+        options={{ tabBarLabel: 'Ritaglia', ...hiddenTabOptions }}
+      />
       <Tab.Screen
         name="PrivacyPolicy"
         component={PrivacyPolicyScreen}

@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useLanguage } from '../context/LanguageContext';
@@ -24,6 +24,7 @@ import useSession from '../auth/useSession';
 import useProfile from '../profile/useProfile';
 import { usePosts } from '../context/PostsContext';
 import PostCard from '../components/PostCard';
+import { processPostImageForUpload } from '../utils/postImageProcessing';
 
 const isUuid = (value) =>
   typeof value === 'string' &&
@@ -47,6 +48,7 @@ const ProfileScreen = () => {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const isWeb = Platform.OS === 'web';
   const navigation = useNavigation();
+  const route = useRoute();
   const { user } = useSession();
   const { profile, loading, error, updateProfile, refresh } = useProfile();
   const { posts, createPost } = usePosts();
@@ -78,6 +80,14 @@ const ProfileScreen = () => {
   const [followError, setFollowError] = useState(null);
   const [followLoading, setFollowLoading] = useState({});
   const hasSyncedLanguage = useRef(false);
+
+  useEffect(() => {
+    const cropped = route.params?.croppedPostImage;
+    if (cropped?.uri) {
+      setPostImageUri(cropped.uri);
+      navigation.setParams({ croppedPostImage: undefined });
+    }
+  }, [navigation, route.params?.croppedPostImage]);
 
   useEffect(() => {
     setFullNameInput(profile?.full_name ?? '');
@@ -184,13 +194,39 @@ const ProfileScreen = () => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.85,
+      allowsEditing: false,
+      quality: 1,
     });
 
     if (!result.canceled && result.assets?.length) {
-      setPostImageUri(result.assets[0].uri);
+      const selectedAsset = result.assets[0];
+
+      if (Platform.OS === 'web') {
+        try {
+          const processed = await processPostImageForUpload({
+            uri: selectedAsset.uri,
+            sourceWidth: selectedAsset.width,
+            sourceHeight: selectedAsset.height,
+            cropRect: null,
+            maxLongSide: 1600,
+            compress: 0.8,
+          });
+          setPostImageUri(processed.uri);
+        } catch (error) {
+          console.warn('[post-image] web fallback original image:', error?.message || error);
+          setPostImageUri(selectedAsset.uri);
+        }
+        return;
+      }
+
+      navigation.navigate('ImageCrop', {
+        imageUri: selectedAsset.uri,
+        imageWidth: selectedAsset.width || null,
+        imageHeight: selectedAsset.height || null,
+        initialRatio: '1:1',
+        returnScreen: 'Profilo',
+        requestId: Date.now(),
+      });
     }
   };
 
