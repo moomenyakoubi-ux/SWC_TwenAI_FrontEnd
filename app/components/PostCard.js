@@ -1,12 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
-  Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,11 +18,24 @@ import { useAppTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { fetchPostComments, fetchPostLikes } from '../services/contentApi';
 
+const LIKE_PAGE_SIZE = 15;
+
 const formatCommentTimestamp = (value) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleString();
+};
+
+const dedupeLikeUsers = (items) => {
+  const map = new Map();
+  (items || []).forEach((item, index) => {
+    const key = String(item?.user_id || `user-${index}`);
+    if (!map.has(key)) {
+      map.set(key, item);
+    }
+  });
+  return Array.from(map.values());
 };
 
 const PostCard = ({ post, isRTL, onPressAuthor }) => {
@@ -49,6 +61,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     if (typeof post.liked_by_me === 'boolean') return post.liked_by_me;
     return post.likes?.some((user) => user.userId === selfUser.id);
   }, [post.liked_by_me, post.likes, selfUser.id]);
+
   const likesCount = useMemo(
     () => (typeof post.likes_count === 'number' ? post.likes_count : post.likes?.length || 0),
     [post.likes, post.likes_count],
@@ -70,33 +83,84 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const [isCommentsOpen, setIsCommentsOpen] = useState({});
+  const [isCommentsOpenByPostId, setIsCommentsOpenByPostId] = useState({});
   const [commentsByPostId, setCommentsByPostId] = useState({});
-  const [isCommentsLoading, setIsCommentsLoading] = useState({});
-  const [commentsError, setCommentsError] = useState({});
+  const [isCommentsLoadingByPostId, setIsCommentsLoadingByPostId] = useState({});
+  const [commentsErrorByPostId, setCommentsErrorByPostId] = useState({});
 
-  const [isLikesOpen, setIsLikesOpen] = useState({});
+  const [isLikesOpenByPostId, setIsLikesOpenByPostId] = useState({});
+  const [isLikesVisibleByPostId, setIsLikesVisibleByPostId] = useState({});
   const [likesByPostId, setLikesByPostId] = useState({});
-  const [isLikesLoading, setIsLikesLoading] = useState({});
-  const [likesError, setLikesError] = useState({});
+  const [likesTotalByPostId, setLikesTotalByPostId] = useState({});
+  const [likesOffsetByPostId, setLikesOffsetByPostId] = useState({});
+  const [isLikesLoadingByPostId, setIsLikesLoadingByPostId] = useState({});
+  const [isLikesLoadingMoreByPostId, setIsLikesLoadingMoreByPostId] = useState({});
+  const [likesErrorByPostId, setLikesErrorByPostId] = useState({});
 
-  const commentsOpenForPost = Boolean(isCommentsOpen[post.id]);
-  const commentsLoadingForPost = Boolean(isCommentsLoading[post.id]);
-  const commentsErrorForPost = commentsError[post.id] || null;
+  const likesAnimatedValueByPostIdRef = useRef({});
+
+  const getLikesAnimationValue = useCallback((postId) => {
+    if (!likesAnimatedValueByPostIdRef.current[postId]) {
+      likesAnimatedValueByPostIdRef.current[postId] = new Animated.Value(0);
+    }
+    return likesAnimatedValueByPostIdRef.current[postId];
+  }, []);
+
+  const animateLikesSection = useCallback((postId, toValue, onEnd) => {
+    const animatedValue = getLikesAnimationValue(postId);
+    Animated.timing(animatedValue, {
+      toValue,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished && onEnd) onEnd();
+    });
+  }, [getLikesAnimationValue]);
+
+  const commentsOpenForPost = Boolean(isCommentsOpenByPostId[post.id]);
+  const commentsLoadingForPost = Boolean(isCommentsLoadingByPostId[post.id]);
+  const commentsErrorForPost = commentsErrorByPostId[post.id] || null;
   const commentsForPost = Array.isArray(commentsByPostId[post.id])
     ? commentsByPostId[post.id]
     : Array.isArray(post.comments)
       ? post.comments
       : [];
 
-  const likesOpenForPost = Boolean(isLikesOpen[post.id]);
-  const likesLoadingForPost = Boolean(isLikesLoading[post.id]);
-  const likesErrorForPost = likesError[post.id] || null;
-  const likesForPost = Array.isArray(likesByPostId[post.id])
-    ? likesByPostId[post.id]
-    : Array.isArray(post.likes)
-      ? post.likes
-      : [];
+  const likesOpenForPost = Boolean(isLikesOpenByPostId[post.id]);
+  const likesVisibleForPost = Boolean(isLikesVisibleByPostId[post.id]);
+  const likesLoadingForPost = Boolean(isLikesLoadingByPostId[post.id]);
+  const likesLoadingMoreForPost = Boolean(isLikesLoadingMoreByPostId[post.id]);
+  const likesErrorForPost = likesErrorByPostId[post.id] || null;
+  const likesForPost = Array.isArray(likesByPostId[post.id]) ? likesByPostId[post.id] : [];
+  const likesTotalForPost =
+    typeof likesTotalByPostId[post.id] === 'number' ? likesTotalByPostId[post.id] : optimisticLikesCount;
+  const canLoadMoreLikes = likesTotalForPost > likesForPost.length;
+
+  const likesAnimatedStyle = useMemo(() => {
+    const animatedValue = getLikesAnimationValue(post.id);
+    return {
+      opacity: animatedValue,
+      maxHeight: animatedValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 240],
+      }),
+      transform: [
+        {
+          scale: animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.98, 1],
+          }),
+        },
+        {
+          translateY: animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [-4, 0],
+          }),
+        },
+      ],
+    };
+  }, [getLikesAnimationValue, post.id]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -151,21 +215,19 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     ]);
   };
 
-  const mediaItems = useMemo(() => post.mediaItems || [], [post.mediaItems]);
-
-  const loadComments = async (postId, { force = false } = {}) => {
+  const fetchCommentsForPost = useCallback(async (postId, { force = false } = {}) => {
     if (!postId) return;
     if (!force && Array.isArray(commentsByPostId[postId])) return;
 
     let alreadyLoading = false;
-    setIsCommentsLoading((prev) => {
+    setIsCommentsLoadingByPostId((prev) => {
       alreadyLoading = Boolean(prev[postId]);
       if (alreadyLoading) return prev;
       return { ...prev, [postId]: true };
     });
     if (alreadyLoading) return;
 
-    setCommentsError((prev) => ({ ...prev, [postId]: null }));
+    setCommentsErrorByPostId((prev) => ({ ...prev, [postId]: null }));
     try {
       const response = await fetchPostComments({ postId, limit: 50, offset: 0 });
       const incoming = Array.isArray(response?.items) ? response.items : [];
@@ -175,58 +237,102 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         await supabase.auth.signOut();
         return;
       }
-      setCommentsError((prev) => ({ ...prev, [postId]: error }));
+      setCommentsErrorByPostId((prev) => ({ ...prev, [postId]: error?.message || 'Errore caricamento commenti.' }));
     } finally {
-      setIsCommentsLoading((prev) => ({ ...prev, [postId]: false }));
+      setIsCommentsLoadingByPostId((prev) => ({ ...prev, [postId]: false }));
     }
-  };
+  }, [commentsByPostId]);
 
-  const loadLikes = async (postId, { force = false } = {}) => {
+  const fetchLikes = useCallback(async (postId, offset = 0, append = false) => {
     if (!postId) return;
-    if (!force && Array.isArray(likesByPostId[postId])) return;
 
-    let alreadyLoading = false;
-    setIsLikesLoading((prev) => {
-      alreadyLoading = Boolean(prev[postId]);
-      if (alreadyLoading) return prev;
-      return { ...prev, [postId]: true };
-    });
-    if (alreadyLoading) return;
+    if (append) {
+      let alreadyLoadingMore = false;
+      setIsLikesLoadingMoreByPostId((prev) => {
+        alreadyLoadingMore = Boolean(prev[postId]);
+        if (alreadyLoadingMore) return prev;
+        return { ...prev, [postId]: true };
+      });
+      if (alreadyLoadingMore) return;
+    } else {
+      let alreadyLoading = false;
+      setIsLikesLoadingByPostId((prev) => {
+        alreadyLoading = Boolean(prev[postId]);
+        if (alreadyLoading) return prev;
+        return { ...prev, [postId]: true };
+      });
+      if (alreadyLoading) return;
+    }
 
-    setLikesError((prev) => ({ ...prev, [postId]: null }));
+    setLikesErrorByPostId((prev) => ({ ...prev, [postId]: null }));
+
     try {
-      const response = await fetchPostLikes({ postId, limit: 50, offset: 0 });
+      const response = await fetchPostLikes({
+        postId,
+        limit: LIKE_PAGE_SIZE,
+        offset,
+      });
       const incoming = Array.isArray(response?.items) ? response.items : [];
-      setLikesByPostId((prev) => ({ ...prev, [postId]: incoming }));
+      setLikesByPostId((prev) => {
+        const existing = append && Array.isArray(prev[postId]) ? prev[postId] : [];
+        const merged = append ? dedupeLikeUsers([...existing, ...incoming]) : incoming;
+        return { ...prev, [postId]: merged };
+      });
+      const totalFromApi = typeof response?.total === 'number' ? response.total : null;
+      const loadedCount = append ? offset + incoming.length : incoming.length;
+      setLikesTotalByPostId((prev) => ({
+        ...prev,
+        [postId]: totalFromApi ?? Math.max(loadedCount, prev[postId] || 0),
+      }));
+      setLikesOffsetByPostId((prev) => ({ ...prev, [postId]: loadedCount }));
     } catch (error) {
       if (error?.code === 'AUTH_REQUIRED') {
         await supabase.auth.signOut();
         return;
       }
-      setLikesError((prev) => ({ ...prev, [postId]: error }));
+      setLikesErrorByPostId((prev) => ({ ...prev, [postId]: error?.message || 'Errore caricamento mi piace.' }));
     } finally {
-      setIsLikesLoading((prev) => ({ ...prev, [postId]: false }));
+      if (append) {
+        setIsLikesLoadingMoreByPostId((prev) => ({ ...prev, [postId]: false }));
+      } else {
+        setIsLikesLoadingByPostId((prev) => ({ ...prev, [postId]: false }));
+      }
     }
-  };
+  }, []);
 
   const handleToggleComments = async () => {
     const nextOpen = !commentsOpenForPost;
-    setIsCommentsOpen((prev) => ({ ...prev, [post.id]: nextOpen }));
+    setIsCommentsOpenByPostId((prev) => ({ ...prev, [post.id]: nextOpen }));
     if (!nextOpen) return;
-    await loadComments(post.id);
+    await fetchCommentsForPost(post.id);
   };
 
-  const handleOpenLikesModal = async () => {
-    setIsLikesOpen((prev) => ({ ...prev, [post.id]: true }));
-    await loadLikes(post.id);
+  const handleToggleLikes = async () => {
+    const nextOpen = !likesOpenForPost;
+    if (nextOpen) {
+      setIsLikesVisibleByPostId((prev) => ({ ...prev, [post.id]: true }));
+      setIsLikesOpenByPostId((prev) => ({ ...prev, [post.id]: true }));
+      animateLikesSection(post.id, 1);
+      if (typeof likesByPostId[post.id] === 'undefined') {
+        await fetchLikes(post.id, 0, false);
+      }
+      return;
+    }
+
+    setIsLikesOpenByPostId((prev) => ({ ...prev, [post.id]: false }));
+    animateLikesSection(post.id, 0, () => {
+      setIsLikesVisibleByPostId((prev) => ({ ...prev, [post.id]: false }));
+    });
   };
 
-  const handleCloseLikesModal = () => {
-    setIsLikesOpen((prev) => ({ ...prev, [post.id]: false }));
+  const handleLoadMoreLikes = async () => {
+    const offset = likesOffsetByPostId[post.id] || likesForPost.length || 0;
+    await fetchLikes(post.id, offset, true);
   };
 
   const handleToggleLike = () => {
     if (likePending) return;
+
     setOptimisticLiked((previousLiked) => {
       const nextLiked = !previousLiked;
       setOptimisticLikesCount((previousCount) => {
@@ -234,24 +340,44 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         return Math.max(previousCount - 1, 0);
       });
 
-      setLikesByPostId((prev) => {
-        if (!Array.isArray(prev[post.id])) return prev;
-        const current = prev[post.id];
-        if (nextLiked) {
-          const selfLike = {
-            userId: selfUser.id,
-            name: 'Tu',
-            fullName: 'Tu',
-            initials: selfUser.initials || 'TU',
-            avatarUrl: null,
-          };
-          return { ...prev, [post.id]: [selfLike, ...current.filter((user) => user.userId !== selfUser.id)] };
-        }
-        return { ...prev, [post.id]: current.filter((user) => user.userId !== selfUser.id) };
-      });
+      if (isLikesOpenByPostId[post.id]) {
+        setLikesByPostId((prev) => {
+          const existing = Array.isArray(prev[post.id]) ? prev[post.id] : [];
+          const hasSelf = existing.some((item) => item.user_id === selfUser.id);
+          let next = existing;
+
+          if (nextLiked && !hasSelf) {
+            next = [
+              {
+                user_id: selfUser.id,
+                full_name: 'Tu',
+                avatar_url: null,
+                created_at: new Date().toISOString(),
+              },
+              ...existing,
+            ];
+          }
+          if (!nextLiked && hasSelf) {
+            next = existing.filter((item) => item.user_id !== selfUser.id);
+          }
+
+          if (next !== existing) {
+            setLikesOffsetByPostId((offsetPrev) => ({ ...offsetPrev, [post.id]: next.length }));
+          }
+
+          return { ...prev, [post.id]: next };
+        });
+
+        setLikesTotalByPostId((prev) => {
+          const currentTotal = typeof prev[post.id] === 'number' ? prev[post.id] : optimisticLikesCount;
+          const nextTotal = nextLiked ? currentTotal + 1 : Math.max(currentTotal - 1, 0);
+          return { ...prev, [post.id]: nextTotal };
+        });
+      }
 
       return nextLiked;
     });
+
     toggleLike(post.id);
   };
 
@@ -315,269 +441,261 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
     }
   };
 
+  const mediaItems = useMemo(() => post.mediaItems || [], [post.mediaItems]);
+
   return (
-    <>
-      <View style={[styles.card, isWeb && styles.webCard]}>
-        <View style={[styles.header, isRTL && styles.rowReverse]}>
-          <View style={[styles.avatar, { backgroundColor: authorAvatarUrl ? 'transparent' : post.avatarColor }]}>
-            {authorAvatarUrl ? (
-              <Image source={{ uri: authorAvatarUrl }} style={styles.avatarImage} />
-            ) : (
-              <Text style={styles.avatarText}>{initials}</Text>
-            )}
-          </View>
-          <TouchableOpacity
-            style={styles.meta}
-            activeOpacity={onPressAuthor ? 0.8 : 1}
-            onPress={onPressAuthor}
-            disabled={!onPressAuthor}
-          >
-            <Text style={[styles.author, isRTL && styles.rtlText]}>{post.author}</Text>
-            <Text style={[styles.handle, isRTL && styles.rtlText]}>
-              {post.displayName} • {post.time}
-            </Text>
-          </TouchableOpacity>
+    <View style={[styles.card, isWeb && styles.webCard]}>
+      <View style={[styles.header, isRTL && styles.rowReverse]}>
+        <View style={[styles.avatar, { backgroundColor: authorAvatarUrl ? 'transparent' : post.avatarColor }]}>
+          {authorAvatarUrl ? (
+            <Image source={{ uri: authorAvatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarText}>{initials}</Text>
+          )}
         </View>
-
-        {isEditing ? (
-          <TextInput
-            style={[styles.editInput, isRTL && styles.rtlText]}
-            value={editDraft}
-            onChangeText={(text) => setEditDraft(text.slice(0, 500))}
-            multiline
-            maxLength={500}
-          />
-        ) : (
-          <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
-        )}
-
-        {post.image && mediaItems.length === 0 ? (
-          <Image source={{ uri: post.image }} style={styles.image} />
-        ) : null}
-
-        {mediaItems.map((media, index) => {
-          if (!media?.publicUrl) return null;
-          if (media.mediaType === 'image') {
-            const aspectRatio = media.width && media.height ? media.width / media.height : undefined;
-            return (
-              <Image
-                key={`${media.publicUrl}-${index}`}
-                source={{ uri: media.publicUrl }}
-                style={[styles.mediaImage, aspectRatio ? { aspectRatio, height: undefined } : null]}
-              />
-            );
-          }
-
-          if (media.mediaType === 'video') {
-            return (
-              <View key={`${media.publicUrl}-${index}`} style={styles.videoPlaceholder}>
-                <Ionicons name="videocam" size={20} color={theme.colors.muted} />
-                <Text style={styles.videoPlaceholderText}>Video non supportato ancora</Text>
-              </View>
-            );
-          }
-
-          return null;
-        })}
-
-        <View style={[styles.actions, isRTL && styles.rowReverse]}>
-          <TouchableOpacity activeOpacity={0.8} onPress={handleToggleLike} disabled={likePending}>
-            <Ionicons
-              name={optimisticLiked ? 'heart' : 'heart-outline'}
-              size={24}
-              color={optimisticLiked ? theme.colors.primary : theme.colors.text}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.8} onPress={handleToggleComments}>
-            <Ionicons name="chatbubble-outline" size={23} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity activeOpacity={0.8} onPress={handleOpenLikesModal}>
-          <Text style={styles.likesText}>Piace a {optimisticLikesCount} persone</Text>
+        <TouchableOpacity
+          style={styles.meta}
+          activeOpacity={onPressAuthor ? 0.8 : 1}
+          onPress={onPressAuthor}
+          disabled={!onPressAuthor}
+        >
+          <Text style={[styles.author, isRTL && styles.rtlText]}>{post.author}</Text>
+          <Text style={[styles.handle, isRTL && styles.rtlText]}>
+            {post.displayName} • {post.time}
+          </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity activeOpacity={0.8} onPress={handleToggleComments}>
-          <Text style={styles.viewComments}>Visualizza tutti i {optimisticCommentsCount} commenti</Text>
-        </TouchableOpacity>
-
-        {isOwner ? (
-          <View style={[styles.ownerActions, isRTL && styles.rowReverse]}>
-            {isEditing ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.ownerButton, updating && styles.ownerButtonDisabled]}
-                  onPress={handleSaveEdit}
-                  disabled={updating}
-                >
-                  <Text style={styles.ownerButtonText}>{updating ? 'Salvataggio...' : 'Salva'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.ownerButton}
-                  onPress={() => {
-                    setIsEditing(false);
-                    setEditError(null);
-                  }}
-                  disabled={updating}
-                >
-                  <Text style={styles.ownerButtonText}>Annulla</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <TouchableOpacity style={styles.ownerButton} onPress={() => setIsEditing(true)}>
-                  <Text style={styles.ownerButtonText}>Modifica</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.ownerButton, styles.ownerDanger, deleting && styles.ownerButtonDisabled]}
-                  onPress={handleDelete}
-                  disabled={deleting}
-                >
-                  <Text style={[styles.ownerButtonText, styles.ownerDangerText]}>
-                    {deleting ? 'Eliminazione...' : 'Elimina'}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        ) : null}
-
-        {editError ? <Text style={styles.editErrorText}>{editError.message}</Text> : null}
-
-        {commentsOpenForPost && (
-          <View style={styles.comments}>
-            {commentsLoadingForPost ? (
-              <View style={styles.commentStateRow}>
-                <ActivityIndicator size="small" color={theme.colors.secondary} />
-                <Text style={styles.commentStateText}>Caricamento commenti...</Text>
-              </View>
-            ) : null}
-
-            {!commentsLoadingForPost && commentsErrorForPost ? (
-              <View style={styles.commentStateBox}>
-                <Text style={styles.commentErrorText}>
-                  {commentsErrorForPost?.message || 'Errore nel caricamento commenti.'}
-                </Text>
-                <TouchableOpacity style={styles.retryCommentsButton} onPress={() => loadComments(post.id, { force: true })}>
-                  <Text style={styles.retryCommentsText}>Riprova</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {!commentsLoadingForPost && !commentsErrorForPost && commentsForPost.length === 0 ? (
-              <Text style={styles.emptyCommentsText}>Nessun commento disponibile.</Text>
-            ) : null}
-
-            {!commentsLoadingForPost && !commentsErrorForPost
-              ? commentsForPost.map((comment) => (
-                <View key={comment.id} style={styles.commentRow}>
-                  <View style={styles.commentAvatar}>
-                    {comment.authorAvatarUrl ? (
-                      <Image source={{ uri: comment.authorAvatarUrl }} style={styles.commentAvatarImage} />
-                    ) : (
-                      <Text style={styles.commentAvatarText}>{comment.initials}</Text>
-                    )}
-                  </View>
-                  <View style={styles.commentBody}>
-                    <View style={styles.commentMeta}>
-                      <Text style={styles.commentAuthor}>{comment.author}</Text>
-                      {comment.createdAt ? <Text style={styles.commentTime}>{formatCommentTimestamp(comment.createdAt)}</Text> : null}
-                    </View>
-                    <Text style={styles.commentText}>{comment.text}</Text>
-                  </View>
-                </View>
-              ))
-              : null}
-
-            <View style={styles.addCommentRow}>
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Aggiungi un commento..."
-                placeholderTextColor={theme.colors.muted}
-                value={commentDraft}
-                onChangeText={setCommentDraft}
-              />
-              <TouchableOpacity
-                style={[styles.addCommentButton, commentSubmitting && styles.ownerButtonDisabled]}
-                onPress={handleSubmitComment}
-                disabled={commentSubmitting}
-              >
-                <Ionicons name="add-circle" size={18} color={theme.colors.primary} />
-                <Text style={styles.addCommentText}>{commentSubmitting ? 'Invio...' : 'Invia'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
       </View>
 
-      <Modal
-        transparent
-        animationType={isWeb ? 'fade' : 'slide'}
-        visible={likesOpenForPost}
-        onRequestClose={handleCloseLikesModal}
-      >
-        <View style={[styles.likesModalOverlay, isWeb ? styles.likesModalOverlayWeb : styles.likesModalOverlayMobile]}>
-          <Pressable style={styles.likesModalBackdrop} onPress={handleCloseLikesModal} />
-          <View style={[styles.likesModalCard, isWeb ? styles.likesModalCardWeb : styles.likesModalCardMobile]}>
-            <View style={styles.likesModalHeader}>
-              <Text style={[styles.likesModalTitle, isRTL && styles.rtlText]}>Mi piace ({optimisticLikesCount})</Text>
-              <TouchableOpacity onPress={handleCloseLikesModal} style={styles.likesModalClose}>
-                <Ionicons name="close" size={20} color={theme.colors.text} />
+      {isEditing ? (
+        <TextInput
+          style={[styles.editInput, isRTL && styles.rtlText]}
+          value={editDraft}
+          onChangeText={(text) => setEditDraft(text.slice(0, 500))}
+          multiline
+          maxLength={500}
+        />
+      ) : (
+        <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
+      )}
+
+      {post.image && mediaItems.length === 0 ? (
+        <Image source={{ uri: post.image }} style={styles.image} />
+      ) : null}
+
+      {mediaItems.map((media, index) => {
+        if (!media?.publicUrl) return null;
+        if (media.mediaType === 'image') {
+          const aspectRatio = media.width && media.height ? media.width / media.height : undefined;
+          return (
+            <Image
+              key={`${media.publicUrl}-${index}`}
+              source={{ uri: media.publicUrl }}
+              style={[styles.mediaImage, aspectRatio ? { aspectRatio, height: undefined } : null]}
+            />
+          );
+        }
+
+        if (media.mediaType === 'video') {
+          return (
+            <View key={`${media.publicUrl}-${index}`} style={styles.videoPlaceholder}>
+              <Ionicons name="videocam" size={20} color={theme.colors.muted} />
+              <Text style={styles.videoPlaceholderText}>Video non supportato ancora</Text>
+            </View>
+          );
+        }
+
+        return null;
+      })}
+
+      <View style={[styles.actions, isRTL && styles.rowReverse]}>
+        <TouchableOpacity activeOpacity={0.8} onPress={handleToggleLike} disabled={likePending}>
+          <Ionicons
+            name={optimisticLiked ? 'heart' : 'heart-outline'}
+            size={24}
+            color={optimisticLiked ? theme.colors.primary : theme.colors.text}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.8} onPress={handleToggleComments}>
+          <Ionicons name="chatbubble-outline" size={23} color={theme.colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity activeOpacity={0.8} onPress={handleToggleLikes}>
+        <Text style={styles.likesText}>Piace a {optimisticLikesCount} persone</Text>
+      </TouchableOpacity>
+
+      {likesVisibleForPost ? (
+        <Animated.View style={[styles.likesInlineSection, likesAnimatedStyle]}>
+          {likesLoadingForPost ? (
+            <View style={styles.likesStateRow}>
+              <ActivityIndicator size="small" color={theme.colors.secondary} />
+              <Text style={styles.likesStateText}>Caricamento mi piace...</Text>
+            </View>
+          ) : null}
+
+          {!likesLoadingForPost && likesErrorForPost ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentErrorText}>{likesErrorForPost}</Text>
+              <TouchableOpacity style={styles.retryCommentsButton} onPress={() => fetchLikes(post.id, 0, false)}>
+                <Text style={styles.retryCommentsText}>Riprova</Text>
               </TouchableOpacity>
             </View>
+          ) : null}
 
-            {likesLoadingForPost ? (
-              <View style={styles.likesStateRow}>
-                <ActivityIndicator size="small" color={theme.colors.secondary} />
-                <Text style={styles.likesStateText}>Caricamento mi piace...</Text>
+          {!likesLoadingForPost && !likesErrorForPost && likesTotalForPost === 0 ? (
+            <Text style={styles.emptyCommentsText}>Nessun mi piace.</Text>
+          ) : null}
+
+          {!likesLoadingForPost && !likesErrorForPost
+            ? likesForPost.map((user, index) => {
+              const fullName = String(user.full_name || 'Utente').trim() || 'Utente';
+              const userInitials =
+                fullName
+                  .split(' ')
+                  .filter(Boolean)
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase() || 'UT';
+              return (
+                <View key={`${user.user_id}-${index}`} style={styles.likeRow}>
+                  <View style={styles.commentAvatar}>
+                    {user.avatar_url ? (
+                      <Image source={{ uri: user.avatar_url }} style={styles.commentAvatarImage} />
+                    ) : (
+                      <Text style={styles.commentAvatarText}>{userInitials}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.commentAuthor}>{fullName}</Text>
+                </View>
+              );
+            })
+            : null}
+
+          {!likesLoadingForPost && !likesErrorForPost && canLoadMoreLikes ? (
+            <TouchableOpacity
+              style={[styles.loadMoreLikesButton, likesLoadingMoreForPost && styles.ownerButtonDisabled]}
+              onPress={handleLoadMoreLikes}
+              disabled={likesLoadingMoreForPost}
+            >
+              {likesLoadingMoreForPost ? (
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              ) : (
+                <Text style={styles.loadMoreLikesText}>Mostra altri</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </Animated.View>
+      ) : null}
+
+      <TouchableOpacity activeOpacity={0.8} onPress={handleToggleComments}>
+        <Text style={styles.viewComments}>Visualizza tutti i {optimisticCommentsCount} commenti</Text>
+      </TouchableOpacity>
+
+      {isOwner ? (
+        <View style={[styles.ownerActions, isRTL && styles.rowReverse]}>
+          {isEditing ? (
+            <>
+              <TouchableOpacity
+                style={[styles.ownerButton, updating && styles.ownerButtonDisabled]}
+                onPress={handleSaveEdit}
+                disabled={updating}
+              >
+                <Text style={styles.ownerButtonText}>{updating ? 'Salvataggio...' : 'Salva'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.ownerButton}
+                onPress={() => {
+                  setIsEditing(false);
+                  setEditError(null);
+                }}
+                disabled={updating}
+              >
+                <Text style={styles.ownerButtonText}>Annulla</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.ownerButton} onPress={() => setIsEditing(true)}>
+                <Text style={styles.ownerButtonText}>Modifica</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ownerButton, styles.ownerDanger, deleting && styles.ownerButtonDisabled]}
+                onPress={handleDelete}
+                disabled={deleting}
+              >
+                <Text style={[styles.ownerButtonText, styles.ownerDangerText]}>
+                  {deleting ? 'Eliminazione...' : 'Elimina'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      ) : null}
+
+      {editError ? <Text style={styles.editErrorText}>{editError.message}</Text> : null}
+
+      {commentsOpenForPost && (
+        <View style={styles.comments}>
+          {commentsLoadingForPost ? (
+            <View style={styles.commentStateRow}>
+              <ActivityIndicator size="small" color={theme.colors.secondary} />
+              <Text style={styles.commentStateText}>Caricamento commenti...</Text>
+            </View>
+          ) : null}
+          {!commentsLoadingForPost && commentsErrorForPost ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentErrorText}>{commentsErrorForPost}</Text>
+              <TouchableOpacity style={styles.retryCommentsButton} onPress={() => fetchCommentsForPost(post.id, { force: true })}>
+                <Text style={styles.retryCommentsText}>Riprova</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {!commentsLoadingForPost && !commentsErrorForPost && commentsForPost.length === 0 ? (
+            <Text style={styles.emptyCommentsText}>Nessun commento disponibile.</Text>
+          ) : null}
+          {!commentsLoadingForPost && !commentsErrorForPost
+            ? commentsForPost.map((comment) => (
+              <View key={comment.id} style={styles.commentRow}>
+                <View style={styles.commentAvatar}>
+                  {comment.authorAvatarUrl ? (
+                    <Image source={{ uri: comment.authorAvatarUrl }} style={styles.commentAvatarImage} />
+                  ) : (
+                    <Text style={styles.commentAvatarText}>{comment.initials}</Text>
+                  )}
+                </View>
+                <View style={styles.commentBody}>
+                  <View style={styles.commentMeta}>
+                    <Text style={styles.commentAuthor}>{comment.author}</Text>
+                    {comment.createdAt ? (
+                      <Text style={styles.commentTime}>{formatCommentTimestamp(comment.createdAt)}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.commentText}>{comment.text}</Text>
+                </View>
               </View>
-            ) : null}
-
-            {!likesLoadingForPost && likesErrorForPost ? (
-              <View style={styles.likesStateBox}>
-                <Text style={styles.likesErrorText}>{likesErrorForPost?.message || 'Errore nel caricamento mi piace.'}</Text>
-                <TouchableOpacity style={styles.retryCommentsButton} onPress={() => loadLikes(post.id, { force: true })}>
-                  <Text style={styles.retryCommentsText}>Riprova</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {!likesLoadingForPost && !likesErrorForPost && likesForPost.length === 0 ? (
-              <Text style={styles.emptyCommentsText}>Nessun mi piace disponibile.</Text>
-            ) : null}
-
-            {!likesLoadingForPost && !likesErrorForPost ? (
-              <ScrollView style={styles.likesListScroll} contentContainerStyle={styles.likesListContent}>
-                {likesForPost.map((user, index) => {
-                  const key = user.userId || user.id || `like-user-${index}`;
-                  const fullName = String(user.fullName || user.name || 'Utente').trim() || 'Utente';
-                  const fallbackInitials =
-                    fullName
-                      .split(' ')
-                      .filter(Boolean)
-                      .map((part) => part[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase() || 'UT';
-                  return (
-                    <View key={key} style={styles.likeRow}>
-                      <View style={styles.commentAvatar}>
-                        {user.avatarUrl ? (
-                          <Image source={{ uri: user.avatarUrl }} style={styles.commentAvatarImage} />
-                        ) : (
-                          <Text style={styles.commentAvatarText}>{user.initials || fallbackInitials}</Text>
-                        )}
-                      </View>
-                      <Text style={styles.commentAuthor}>{fullName}</Text>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            ) : null}
+            ))
+            : null}
+          <View style={styles.addCommentRow}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Aggiungi un commento..."
+              placeholderTextColor={theme.colors.muted}
+              value={commentDraft}
+              onChangeText={setCommentDraft}
+            />
+            <TouchableOpacity
+              style={[styles.addCommentButton, commentSubmitting && styles.ownerButtonDisabled]}
+              onPress={handleSubmitComment}
+              disabled={commentSubmitting}
+            >
+              <Ionicons name="add-circle" size={18} color={theme.colors.primary} />
+              <Text style={styles.addCommentText}>{commentSubmitting ? 'Invio...' : 'Invia'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-    </>
+      )}
+    </View>
   );
 };
 
@@ -682,6 +800,35 @@ const createStyles = (theme) => StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.text,
     marginBottom: theme.spacing.xs,
+  },
+  likesInlineSection: {
+    overflow: 'hidden',
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.divider,
+    marginBottom: theme.spacing.xs,
+    paddingTop: theme.spacing.sm,
+    gap: theme.spacing.sm,
+  },
+  likesStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  likesStateText: {
+    color: theme.colors.muted,
+  },
+  loadMoreLikesButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surfaceMuted,
+  },
+  loadMoreLikesText: {
+    color: theme.colors.text,
+    fontWeight: '700',
   },
   viewComments: {
     color: theme.colors.muted,
@@ -833,80 +980,6 @@ const createStyles = (theme) => StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     backgroundColor: theme.colors.card,
     color: theme.colors.text,
-  },
-  likesModalOverlay: {
-    flex: 1,
-  },
-  likesModalOverlayWeb: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-  },
-  likesModalOverlayMobile: {
-    justifyContent: 'flex-end',
-  },
-  likesModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-  },
-  likesModalCard: {
-    backgroundColor: theme.colors.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    ...theme.shadow.card,
-  },
-  likesModalCardWeb: {
-    width: '100%',
-    maxWidth: 460,
-    maxHeight: '75%',
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-  },
-  likesModalCardMobile: {
-    width: '100%',
-    maxHeight: '70%',
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.lg,
-  },
-  likesModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.sm,
-  },
-  likesModalTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  likesModalClose: {
-    padding: 4,
-  },
-  likesStateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.sm,
-  },
-  likesStateText: {
-    color: theme.colors.muted,
-  },
-  likesStateBox: {
-    gap: theme.spacing.xs,
-    paddingBottom: theme.spacing.sm,
-  },
-  likesErrorText: {
-    color: theme.colors.danger || '#d64545',
-    fontWeight: '600',
-  },
-  likesListScroll: {
-    maxHeight: 360,
-  },
-  likesListContent: {
-    gap: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
   },
   rowReverse: {
     flexDirection: 'row-reverse',

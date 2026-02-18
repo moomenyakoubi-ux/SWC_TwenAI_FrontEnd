@@ -309,6 +309,40 @@ const normalizeComment = (comment, index) => {
   };
 };
 
+const normalizeLikeUser = (like, index) => {
+  if (!like) return null;
+  const userId = asString(
+    like.user_id ||
+      like.userId ||
+      like.id ||
+      like.profile_id ||
+      like.author_id ||
+      `like-user-${index}`,
+  );
+  if (!userId) return null;
+  const fullName = asNullableString(
+    like.full_name ||
+      like.fullName ||
+      like.name ||
+      like.display_name ||
+      like.author_name ||
+      like?.profile?.full_name ||
+      like?.user?.full_name,
+  );
+  return {
+    user_id: userId,
+    full_name: fullName,
+    avatar_url: asNullableString(
+      like.avatar_url ||
+        like.avatarUrl ||
+        like.author_avatar_url ||
+        like?.profile?.avatar_url ||
+        like?.user?.avatar_url,
+    ),
+    created_at: asNullableString(like.created_at || like.createdAt),
+  };
+};
+
 const normalizeMediaItem = (media) => {
   if (!media) return null;
   return {
@@ -580,7 +614,7 @@ export const fetchPostComments = async ({ postId, limit = 50, offset = 0, access
 
 /**
  * @param {{ postId: string, limit?: number, offset?: number, accessToken?: string|null }} params
- * @returns {Promise<{ items: Array<{ userId: string, name: string, fullName: string, avatarUrl: string|null, initials: string }>, hasMore: boolean, nextOffset: number }>}
+ * @returns {Promise<{ items: Array<{ user_id: string, full_name: string|null, avatar_url: string|null, created_at?: string|null }>, limit: number, offset: number, total: number|null, hasMore: boolean, nextOffset: number }>}
  */
 export const fetchPostLikes = async ({ postId, limit = 50, offset = 0, accessToken } = {}) => {
   const safePostId = asString(postId);
@@ -597,13 +631,19 @@ export const fetchPostLikes = async ({ postId, limit = 50, offset = 0, accessTok
 
   const rawItems = getArrayFromPayload(payload, ['items', 'likes', 'data', 'results']);
   const items = rawItems
-    .map((like, index) => normalizeLike(like, offset + index))
+    .map((like, index) => normalizeLikeUser(like, offset + index))
     .filter(Boolean);
+  const resolvedLimit = toNumber(payload?.limit) ?? limit;
+  const resolvedOffset = toNumber(payload?.offset) ?? offset;
+  const total = toNumber(payload?.total);
 
   return {
     items,
+    limit: resolvedLimit,
+    offset: resolvedOffset,
+    total,
     hasMore: computeHasMore({ payload, offset, limit, receivedCount: items.length }),
-    nextOffset: offset + items.length,
+    nextOffset: resolvedOffset + items.length,
   };
 };
 
