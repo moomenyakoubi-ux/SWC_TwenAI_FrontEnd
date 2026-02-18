@@ -24,9 +24,8 @@ import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
-import { usePosts } from '../context/PostsContext';
 import { supabase } from '../lib/supabase';
-import { fetchHomeFeed, fetchPostComments } from '../services/contentApi';
+import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
 const HOME_PAGE_SIZE = 20;
@@ -71,17 +70,12 @@ const HomeScreen = ({ navigation }) => {
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
   const retryLabel = strings.travel?.retryLabel || 'Riprova';
-  const { addComment, selfUser } = usePosts();
 
   const [homeFeedItems, setHomeFeedItems] = useState([]);
   const [homeFeedError, setHomeFeedError] = useState(null);
   const [initialFeedLoading, setInitialFeedLoading] = useState(true);
   const [refreshingFeed, setRefreshingFeed] = useState(false);
   const [loadingMoreFeed, setLoadingMoreFeed] = useState(false);
-  const [isCommentsOpen, setIsCommentsOpen] = useState({});
-  const [commentsByPostId, setCommentsByPostId] = useState({});
-  const [isLoadingComments, setIsLoadingComments] = useState({});
-  const [commentsError, setCommentsError] = useState({});
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const sideMenuWidth = isWeb ? WEB_SIDE_MENU_WIDTH : 280;
@@ -139,10 +133,6 @@ const HomeScreen = ({ navigation }) => {
       const hasExistingItems = feedItemsCountRef.current > 0;
 
       if (reset) {
-        setIsCommentsOpen({});
-        setCommentsByPostId({});
-        setIsLoadingComments({});
-        setCommentsError({});
         setRefreshingFeed(hasExistingItems);
         if (!hasExistingItems) setInitialFeedLoading(true);
       } else if (nextOffset > 0) {
@@ -223,76 +213,6 @@ const HomeScreen = ({ navigation }) => {
     [showSoftError],
   );
 
-  const loadCommentsForPost = useCallback(async (postId) => {
-    if (!postId) return;
-    let alreadyLoading = false;
-    setIsLoadingComments((prev) => {
-      alreadyLoading = Boolean(prev[postId]);
-      if (alreadyLoading) return prev;
-      return { ...prev, [postId]: true };
-    });
-    if (alreadyLoading) return;
-    setCommentsError((prev) => ({ ...prev, [postId]: null }));
-    try {
-      const response = await fetchPostComments({ postId, limit: 50, offset: 0 });
-      const incoming = Array.isArray(response?.items) ? response.items : [];
-      setCommentsByPostId((prev) => ({ ...prev, [postId]: incoming }));
-    } catch (error) {
-      if (error?.code === 'AUTH_REQUIRED') {
-        await supabase.auth.signOut();
-        return;
-      }
-      setCommentsError((prev) => ({ ...prev, [postId]: error }));
-    } finally {
-      setIsLoadingComments((prev) => ({ ...prev, [postId]: false }));
-    }
-  }, []);
-
-  const handleToggleCommentsForPost = useCallback((postId) => {
-    const shouldOpen = !Boolean(isCommentsOpen[postId]);
-    setIsCommentsOpen((prev) => ({ ...prev, [postId]: shouldOpen }));
-    if (!shouldOpen) return;
-    if (Array.isArray(commentsByPostId[postId])) return;
-    loadCommentsForPost(postId);
-  }, [commentsByPostId, isCommentsOpen, loadCommentsForPost]);
-
-  const handleRetryCommentsForPost = useCallback((postId) => {
-    loadCommentsForPost(postId);
-  }, [loadCommentsForPost]);
-
-  const handleSubmitCommentForPost = useCallback(async ({ postId, text }) => {
-    const result = await addComment(postId, text);
-    if (result?.error) {
-      throw result.error;
-    }
-
-    const now = new Date().toISOString();
-    const createdComment = {
-      id: result?.data?.id || `local-${Date.now()}`,
-      authorId: selfUser?.id || null,
-      author: 'Tu',
-      initials: selfUser?.initials || 'TU',
-      authorAvatarUrl: null,
-      text,
-      createdAt: result?.data?.created_at || now,
-    };
-
-    setHomeFeedItems((prev) =>
-      prev.map((item) => {
-        if (item?.kind !== 'post' || item.id !== postId) return item;
-        const baseCount = typeof item.comments_count === 'number' ? item.comments_count : 0;
-        return { ...item, comments_count: baseCount + 1 };
-      }),
-    );
-
-    setCommentsByPostId((prev) => {
-      if (!isCommentsOpen[postId]) return prev;
-      const existing = Array.isArray(prev[postId]) ? prev[postId] : [];
-      const deduped = [createdComment, ...existing.filter((comment) => comment.id !== createdComment.id)];
-      return { ...prev, [postId]: deduped };
-    });
-  }, [addComment, isCommentsOpen, selfUser?.id, selfUser?.initials]);
-
   useFocusEffect(
     React.useCallback(() => {
       loadHomeFeed({ reset: true, silent: true });
@@ -362,33 +282,13 @@ const HomeScreen = ({ navigation }) => {
         <PostCard
           post={item}
           isRTL={isRTL}
-          commentsOpen={Boolean(isCommentsOpen[item.id])}
-          comments={commentsByPostId[item.id]}
-          commentsLoading={Boolean(isLoadingComments[item.id])}
-          commentsError={commentsError[item.id] || null}
-          onToggleComments={handleToggleCommentsForPost}
-          onRetryComments={handleRetryCommentsForPost}
-          onSubmitComment={handleSubmitCommentForPost}
           onPressAuthor={
             item.authorId ? () => navigation.navigate('PublicProfile', { profileId: item.authorId }) : undefined
           }
         />
       );
     },
-    [
-      commentsByPostId,
-      commentsError,
-      handleRetryCommentsForPost,
-      handleSubmitCommentForPost,
-      handleToggleCommentsForPost,
-      hasEventNewsDetailRoute,
-      isCommentsOpen,
-      isLoadingComments,
-      isRTL,
-      navigation,
-      openEventNewsItem,
-      openExternalLink,
-    ],
+    [hasEventNewsDetailRoute, isRTL, navigation, openEventNewsItem, openExternalLink],
   );
 
   const listHeader = useMemo(

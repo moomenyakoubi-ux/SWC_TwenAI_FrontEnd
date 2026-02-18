@@ -247,11 +247,35 @@ const normalizeEventsNewsItem = (item, index, offset) => {
 
 const normalizeLike = (like, index) => {
   if (!like) return null;
-  const userId = asString(like.userId || like.user_id || like.id || `like-${index}`);
-  const name = asString(like.name || like.full_name || like.display_name || like.email || 'Utente');
+  const userId = asString(
+    like.userId ||
+      like.user_id ||
+      like.id ||
+      like.profile_id ||
+      like.author_id ||
+      `like-${index}`,
+  );
+  const name = asString(
+    like.name ||
+      like.full_name ||
+      like.display_name ||
+      like.author_name ||
+      like?.profile?.full_name ||
+      like?.user?.full_name ||
+      like.email ||
+      'Utente',
+  );
   return {
     userId,
     name,
+    fullName: name || 'Utente',
+    avatarUrl: asNullableString(
+      like.avatarUrl ||
+        like.avatar_url ||
+        like.author_avatar_url ||
+        like?.profile?.avatar_url ||
+        like?.user?.avatar_url,
+    ),
     initials: getInitials(name),
   };
 };
@@ -545,6 +569,35 @@ export const fetchPostComments = async ({ postId, limit = 50, offset = 0, access
   const rawItems = getArrayFromPayload(payload, ['items', 'comments', 'data', 'results']);
   const items = rawItems
     .map((comment, index) => normalizeComment(comment, offset + index))
+    .filter(Boolean);
+
+  return {
+    items,
+    hasMore: computeHasMore({ payload, offset, limit, receivedCount: items.length }),
+    nextOffset: offset + items.length,
+  };
+};
+
+/**
+ * @param {{ postId: string, limit?: number, offset?: number, accessToken?: string|null }} params
+ * @returns {Promise<{ items: Array<{ userId: string, name: string, fullName: string, avatarUrl: string|null, initials: string }>, hasMore: boolean, nextOffset: number }>}
+ */
+export const fetchPostLikes = async ({ postId, limit = 50, offset = 0, accessToken } = {}) => {
+  const safePostId = asString(postId);
+  if (!safePostId) {
+    throw new Error('postId non valido.');
+  }
+
+  const { body: payload } = await requestApi({
+    path: `/api/posts/${encodeURIComponent(safePostId)}/likes`,
+    params: { limit, offset },
+    accessToken,
+    debugTag: 'post-likes',
+  });
+
+  const rawItems = getArrayFromPayload(payload, ['items', 'likes', 'data', 'results']);
+  const items = rawItems
+    .map((like, index) => normalizeLike(like, offset + index))
     .filter(Boolean);
 
   return {
