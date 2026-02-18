@@ -1,4 +1,4 @@
-import { getApiBaseUrl, logHealthCheck } from '../config/api';
+import { getApiBaseUrl, getSupabaseAccessToken, logHealthCheck } from '../config/api';
 
 const PERMESSO_KEYWORDS = [
   'permesso di soggiorno',
@@ -30,6 +30,12 @@ export const askAI = async (question, options = {}) => {
   if (!baseUrl) {
     throw new Error('API base URL is not configured.');
   }
+  const accessToken = await getSupabaseAccessToken();
+  if (!accessToken) {
+    const authError = new Error('Session expired. Please sign in again.');
+    authError.code = 'AUTH_REQUIRED';
+    throw authError;
+  }
   const manualIntent = options?.intent;
   const intent = manualIntent || inferIntentFromQuestion(question);
   const requestedLang = String(options?.lang || 'it').trim().toLowerCase();
@@ -44,7 +50,10 @@ export const askAI = async (question, options = {}) => {
   }
   const response = await fetch(`${baseUrl}/api/ai/ask`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify(payload),
   });
 

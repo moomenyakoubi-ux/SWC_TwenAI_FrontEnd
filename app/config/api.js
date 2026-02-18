@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { supabase } from '../lib/supabase';
 
 let hasLoggedHealthCheck = false;
 
@@ -27,7 +28,14 @@ export const logHealthCheck = async () => {
   console.log('[api] API_BASE_URL', baseUrl);
   console.log('[api] health check URL', healthUrl);
   try {
-    const response = await fetch(healthUrl);
+    const accessToken = await getSupabaseAccessToken();
+    if (!accessToken) {
+      console.log('[api] health check skipped: missing access token.');
+      return;
+    }
+    const response = await fetch(healthUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
     const contentType = response.headers.get('content-type') || '';
     const body = contentType.includes('application/json')
       ? await response.json()
@@ -40,3 +48,21 @@ export const logHealthCheck = async () => {
 };
 
 export const API_BASE = getApiBaseUrl();
+
+export const getSupabaseAccessToken = async () => {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      if (__DEV__) {
+        console.warn('[api] getSession error:', error.message || error);
+      }
+      return null;
+    }
+    return data?.session?.access_token || null;
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[api] getSession failed:', error?.message || error);
+    }
+    return null;
+  }
+};

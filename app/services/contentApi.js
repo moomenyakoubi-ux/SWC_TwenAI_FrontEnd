@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../config/api';
+import { getApiBaseUrl, getSupabaseAccessToken } from '../config/api';
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_AVATAR_COLOR = '#E70013';
@@ -168,6 +168,12 @@ const requestApi = async ({ path, params, accessToken, debugTag }) => {
   if (!baseUrl) {
     throw new Error('API base URL non configurata.');
   }
+  const resolvedAccessToken = accessToken || await getSupabaseAccessToken();
+  if (!resolvedAccessToken) {
+    const authError = new Error('Sessione non valida. Effettua di nuovo il login.');
+    authError.code = 'AUTH_REQUIRED';
+    throw authError;
+  }
 
   const requestUrl = `${baseUrl}${path}${buildQueryString(params)}`;
   if (__DEV__ && debugTag) {
@@ -178,7 +184,7 @@ const requestApi = async ({ path, params, accessToken, debugTag }) => {
     method: 'GET',
     headers: {
       Accept: 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(resolvedAccessToken ? { Authorization: `Bearer ${resolvedAccessToken}` } : {}),
     },
   });
 
@@ -193,7 +199,7 @@ const requestApi = async ({ path, params, accessToken, debugTag }) => {
     throw new Error(asString(body) || `Request failed (${response.status}).`);
   }
 
-  return { body: body || {}, status: response.status, url: requestUrl };
+  return { body: body || {}, status: response.status, url: requestUrl, hadAuth: true };
 };
 
 const computeHasMore = ({ payload, offset, limit, receivedCount }) => {
@@ -424,7 +430,7 @@ export const fetchEventsNews = async ({ limit = DEFAULT_LIMIT, offset = 0, type,
  * @returns {Promise<{ items: HomeFeedItem[], hasMore: boolean, nextOffset: number }>}
  */
 export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessToken } = {}) => {
-  const { body: payload } = await requestApi({
+  const { body: payload, hadAuth } = await requestApi({
     path: '/api/feed/home',
     params: { limit, offset },
     accessToken,
@@ -485,5 +491,6 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     adEvery,
     hasMore,
     nextOffset: responseOffset + responseLimit,
+    hadAuth,
   };
 };

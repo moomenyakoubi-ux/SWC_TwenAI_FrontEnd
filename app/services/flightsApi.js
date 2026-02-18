@@ -1,3 +1,5 @@
+import { getApiBaseUrl, getSupabaseAccessToken } from '../config/api';
+
 /**
  * @typedef {Object} FlightSearchRequest
  * @property {'IT'|'TN'} originCountry
@@ -40,15 +42,22 @@
  * @returns {Promise<FlightOffer[]>}
  */
 export const searchFlights = async (request) => {
-  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+  const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
     throw new Error('Flight search failed: EXPO_PUBLIC_API_BASE_URL is not set.');
+  }
+  const accessToken = await getSupabaseAccessToken();
+  if (!accessToken) {
+    const authError = new Error('Flight search requires an authenticated session.');
+    authError.code = 'AUTH_REQUIRED';
+    throw authError;
   }
 
   const response = await fetch(`${baseUrl}/api/flights/search-country`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(request),
   });

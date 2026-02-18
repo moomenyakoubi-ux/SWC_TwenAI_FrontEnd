@@ -24,7 +24,7 @@ import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
-import useSession from '../auth/useSession';
+import { supabase } from '../lib/supabase';
 import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
@@ -32,7 +32,6 @@ const HOME_PAGE_SIZE = 20;
 const EVENT_NEWS_DETAIL_ROUTES = ['EventNewsDetail', 'NewsDetail', 'EventDetail'];
 const SYNTHETIC_HOME_ID_PATTERN = /^(post|official|sponsored|event[-_]news)-\d+$/i;
 const SEED_CONTENT_PATTERN = /\b(mock|seed|demo|fake)\b/i;
-
 const dedupeFeedItems = (items) => {
   const map = new Map();
   items.forEach((item) => {
@@ -67,7 +66,6 @@ const resolveEventNewsDetailNavigation = (navigation) => {
 
 const HomeScreen = ({ navigation }) => {
   const isWeb = Platform.OS === 'web';
-  const { session } = useSession();
   const { strings, isRTL } = useLanguage();
   const homeStrings = strings.home;
   const menuStrings = strings.menu;
@@ -147,7 +145,6 @@ const HomeScreen = ({ navigation }) => {
         const response = await fetchHomeFeed({
           limit: HOME_PAGE_SIZE,
           offset: nextOffset,
-          accessToken: session?.access_token || null,
         });
         const incoming = Array.isArray(response?.items) ? response.items : [];
         const nextHasMore = incoming.length > 0 && Boolean(response?.hasMore);
@@ -198,6 +195,10 @@ const HomeScreen = ({ navigation }) => {
           });
         }
       } catch (requestError) {
+        if (requestError?.code === 'AUTH_REQUIRED') {
+          await supabase.auth.signOut();
+          return;
+        }
         setHomeFeedError(requestError);
         if (!silent) {
           showSoftError(requestError?.message);
@@ -209,7 +210,7 @@ const HomeScreen = ({ navigation }) => {
         setLoadingMoreFeed(false);
       }
     },
-    [session?.access_token, showSoftError],
+    [showSoftError],
   );
 
   useFocusEffect(
