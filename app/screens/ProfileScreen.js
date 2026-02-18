@@ -24,7 +24,6 @@ import useSession from '../auth/useSession';
 import useProfile from '../profile/useProfile';
 import { usePosts } from '../context/PostsContext';
 import PostCard from '../components/PostCard';
-import { processPostImageForUpload } from '../utils/postImageProcessing';
 
 const isUuid = (value) =>
   typeof value === 'string' &&
@@ -200,33 +199,25 @@ const ProfileScreen = () => {
 
     if (!result.canceled && result.assets?.length) {
       const selectedAsset = result.assets[0];
-
-      if (Platform.OS === 'web') {
-        try {
-          const processed = await processPostImageForUpload({
-            uri: selectedAsset.uri,
-            sourceWidth: selectedAsset.width,
-            sourceHeight: selectedAsset.height,
-            cropRect: null,
-            maxLongSide: 1600,
-            compress: 0.8,
-          });
-          setPostImageUri(processed.uri);
-        } catch (error) {
-          console.warn('[post-image] web fallback original image:', error?.message || error);
-          setPostImageUri(selectedAsset.uri);
-        }
-        return;
-      }
-
-      navigation.navigate('ImageCrop', {
+      const cropParams = {
         imageUri: selectedAsset.uri,
         imageWidth: selectedAsset.width || null,
         imageHeight: selectedAsset.height || null,
         initialRatio: '1:1',
         returnScreen: 'Profilo',
         requestId: Date.now(),
-      });
+      };
+
+      if (typeof navigation?.navigate === 'function') {
+        try {
+          navigation.navigate('ImageCrop', cropParams);
+          return;
+        } catch (error) {
+          console.warn('[post-image] navigate ImageCrop failed:', error?.message || error);
+        }
+      }
+
+      setPostImageUri(selectedAsset.uri);
     }
   };
 

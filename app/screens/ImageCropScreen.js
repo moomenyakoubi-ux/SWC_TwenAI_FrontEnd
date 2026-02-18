@@ -288,8 +288,8 @@ const ImageCropScreen = ({ route, navigation }) => {
         },
       });
     } catch (error) {
+      console.warn('[image-crop] processing failed:', error?.message || error);
       if (Platform.OS === 'web') {
-        console.warn('[image-crop] fallback no-crop on web:', error?.message || error);
         closeWithResult({
           croppedPostImage: {
             uri: imageUri,
