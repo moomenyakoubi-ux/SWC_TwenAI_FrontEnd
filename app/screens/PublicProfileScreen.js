@@ -20,6 +20,7 @@ import useSession from '../auth/useSession';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import PostCard from '../components/PostCard';
+import { fetchUserPosts } from '../services/contentApi';
 
 const isUuid = (value) =>
   typeof value === 'string' &&
@@ -69,33 +70,6 @@ const PublicProfileScreen = ({ route, navigation }) => {
   const [startingChat, setStartingChat] = useState(false);
 
   const isSelf = user?.id === profileId;
-
-  const formatTime = useCallback((value) => {
-    const created = value ? new Date(value).getTime() : Date.now();
-    const diff = Math.max(0, Date.now() - created);
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `${Math.max(1, minutes)}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `${days}g`;
-  }, []);
-
-  const getAvatarColor = useCallback((seed) => {
-    if (!seed) return theme.colors.secondary;
-    const palette = [theme.colors.primary, theme.colors.secondary, theme.colors.accent, theme.colors.danger, theme.colors.muted];
-    const hash = String(seed)
-      .split('')
-      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return palette[hash % palette.length];
-  }, [theme]);
-
-  const resolveAvatarUrl = useCallback((value) => {
-    if (!value) return null;
-    if (/^https?:\/\//i.test(value)) return value;
-    const { data } = supabase.storage.from('avatars').getPublicUrl(value);
-    return data?.publicUrl || null;
-  }, []);
 
   const resetLists = useCallback(() => {
     setPosts([]);
@@ -317,94 +291,30 @@ const PublicProfileScreen = ({ route, navigation }) => {
     if (!profileId) return;
     if (!postsHasMore && pageNumber > 0) return;
     setPostsLoading(true);
-    const from = pageNumber * 20;
-    const to = from + 19;
+    const offset = pageNumber * 20;
     try {
-      const { data, error: postsError } = await supabase
-        .from('posts')
-        .select('id, content, created_at, author_id, full_name')
-        .eq('author_id', profileId)
-        .order('created_at', { ascending: false })
-        .range(from, to);
-      if (postsError) {
-        handleError(postsError);
-        setPostsLoading(false);
+      const response = await fetchUserPosts({
+        userId: profileId,
+        limit: 20,
+        offset,
+      });
+      const incoming = Array.isArray(response?.items) ? response.items : [];
+      setPosts((prev) => (pageNumber === 0 ? incoming : [...prev, ...incoming]));
+      if (typeof response?.hasMore === 'boolean') {
+        setPostsHasMore(response.hasMore && incoming.length > 0);
+      } else {
+        setPostsHasMore(incoming.length === 20);
+      }
+    } catch (err) {
+      if (err?.code === 'AUTH_REQUIRED') {
+        await supabase.auth.signOut();
         return;
       }
-    const postRows = data || [];
-    const postIds = postRows.map((row) => row.id).filter(Boolean);
-    const authorIds = Array.from(new Set(postRows.map((row) => row.author_id).filter(Boolean)));
-    let authorMap = {};
-    if (authorIds.length) {
-      const { data: authorRows, error: authorError } = await supabase
-        .from('profiles')
-        .select('id, avatar_url')
-        .in('id', authorIds);
-      if (authorError) {
-        handleError(authorError);
-      }
-      authorMap = (authorRows || []).reduce((acc, row) => {
-        acc[row.id] = resolveAvatarUrl(row.avatar_url);
-        return acc;
-      }, {});
-    }
-      let mediaMap = {};
-      if (postIds.length) {
-        const { data: mediaRows, error: mediaError } = await supabase
-          .from('post_media')
-          .select('post_id, media_type, bucket, path, width, height, duration_seconds')
-          .in('post_id', postIds);
-        if (mediaError) {
-          handleError(mediaError);
-        }
-        mediaMap = (mediaRows || []).reduce((acc, row) => {
-          if (!acc[row.post_id]) acc[row.post_id] = [];
-          const bucket = row.bucket || 'post_media';
-          const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(row.path || '');
-          acc[row.post_id].push({
-            mediaType: row.media_type,
-            bucket,
-            path: row.path,
-            width: row.width,
-            height: row.height,
-            durationSeconds: row.duration_seconds,
-            publicUrl: urlData?.publicUrl || null,
-          });
-          return acc;
-        }, {});
-      }
-
-      const mapped = postRows.map((row) => {
-      const authorName = row.full_name || profile?.full_name || 'Utente';
-      const authorAvatarUrl = authorMap[row.author_id] || resolveAvatarUrl(profile?.avatar_url);
-        const mediaItems = mediaMap[row.id] || [];
-        const fallbackImage = mediaItems.find((item) => item.mediaType?.startsWith('image'));
-        const image = fallbackImage?.publicUrl || null;
-        return {
-          id: row.id,
-          authorId: row.author_id,
-        author: authorName,
-        displayName: authorName,
-        avatarColor: getAvatarColor(row.author_id),
-        authorAvatarUrl,
-        time: formatTime(row.created_at),
-          content: row.content,
-          image,
-          mediaPath: mediaItems[0]?.path || null,
-          mediaBucket: mediaItems[0]?.bucket || null,
-          mediaItems,
-          likes: [],
-          comments: [],
-        };
-      });
-      setPosts((prev) => (pageNumber === 0 ? mapped : [...prev, ...mapped]));
-      setPostsHasMore((data || []).length === 20);
-    } catch (err) {
       handleError(err);
     } finally {
       setPostsLoading(false);
     }
-  }, [formatTime, getAvatarColor, handleError, postsHasMore, profile?.avatar_url, profile?.full_name, profileId, resolveAvatarUrl]);
+  }, [handleError, postsHasMore, profileId]);
 
   const fetchFollowers = useCallback(async (pageNumber) => {
     if (!profileId) return;
