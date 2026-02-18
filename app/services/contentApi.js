@@ -115,6 +115,16 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const toBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return null;
+};
+
 const getArrayFromPayload = (payload, keys) => {
   if (Array.isArray(payload)) return payload;
   for (const key of keys) {
@@ -249,13 +259,28 @@ const normalizeLike = (like, index) => {
 const normalizeComment = (comment, index) => {
   if (!comment) return null;
   const id = asString(comment.id || comment.comment_id || `comment-${index}`);
-  const author = asString(comment.author || comment.full_name || comment.display_name || 'Utente');
+  const author = asString(
+    comment.author ||
+      comment.full_name ||
+      comment.author_name ||
+      comment.display_name ||
+      comment?.profile?.full_name ||
+      'Utente',
+  );
+  const text = asString(comment.text || comment.content || comment.body);
+  if (!text) return null;
   return {
     id,
     authorId: asNullableString(comment.authorId || comment.author_id || null),
     author,
     initials: getInitials(author),
-    text: asString(comment.text || comment.content || comment.body),
+    authorAvatarUrl: asNullableString(
+      comment.authorAvatarUrl ||
+        comment.author_avatar_url ||
+        comment.avatar_url ||
+        comment?.profile?.avatar_url,
+    ),
+    text,
     createdAt: asNullableString(comment.createdAt || comment.created_at || null),
   };
 };
@@ -286,6 +311,10 @@ const normalizePostPayload = (rawPost) => {
   const likesCount = toNumber(rawPost.likes_count ?? rawPost.likesCount ?? rawPost.likes?.length) ?? rawLikes.length;
   const commentsCount =
     toNumber(rawPost.comments_count ?? rawPost.commentsCount ?? rawPost.comments?.length) ?? rawComments.length;
+  const likedByMe =
+    toBoolean(rawPost.liked_by_me ?? rawPost.likedByMe) ??
+    toBoolean(rawPost.is_liked ?? rawPost.liked) ??
+    false;
 
   return {
     id: postId,
@@ -299,6 +328,7 @@ const normalizePostPayload = (rawPost) => {
     image: asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url),
     likes: rawLikes,
     likes_count: likesCount,
+    liked_by_me: likedByMe,
     comments: rawComments,
     comments_count: commentsCount,
     mediaItems: rawMediaItems,
@@ -492,5 +522,64 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     hasMore,
     nextOffset: responseOffset + responseLimit,
     hadAuth,
+  };
+};
+
+/**
+ * @param {{ postId: string, limit?: number, offset?: number, accessToken?: string|null }} params
+ * @returns {Promise<{ items: Array<{ id: string, authorId: string|null, author: string, initials: string, authorAvatarUrl: string|null, text: string, createdAt: string|null }>, hasMore: boolean, nextOffset: number }>}
+ */
+export const fetchPostComments = async ({ postId, limit = 50, offset = 0, accessToken } = {}) => {
+  const safePostId = asString(postId);
+  if (!safePostId) {
+    throw new Error('postId non valido.');
+  }
+
+  const { body: payload } = await requestApi({
+    path: `/api/posts/${encodeURIComponent(safePostId)}/comments`,
+    params: { limit, offset },
+    accessToken,
+    debugTag: 'post-comments',
+  });
+
+  const rawItems = getArrayFromPayload(payload, ['items', 'comments', 'data', 'results']);
+  const items = rawItems
+    .map((comment, index) => normalizeComment(comment, offset + index))
+    .filter(Boolean);
+
+  return {
+    items,
+    hasMore: computeHasMore({ payload, offset, limit, receivedCount: items.length }),
+    nextOffset: offset + items.length,
+  };
+};
+
+/**
+ * @param {{ userId: string, limit?: number, offset?: number, accessToken?: string|null }} params
+ * @returns {Promise<{ items: HomeFeedItem[], hasMore: boolean, nextOffset: number }>}
+ */
+export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0, accessToken } = {}) => {
+  const safeUserId = asString(userId);
+  if (!safeUserId) {
+    throw new Error('userId non valido.');
+  }
+
+  const { body: payload } = await requestApi({
+    path: `/api/users/${encodeURIComponent(safeUserId)}/posts`,
+    params: { limit, offset },
+    accessToken,
+    debugTag: 'user-posts',
+  });
+
+  const rawItems = getArrayFromPayload(payload, ['items', 'posts', 'data', 'results']);
+  const items = rawItems
+    .map((item) => normalizePostPayload(item))
+    .filter(Boolean)
+    .map((post) => ({ kind: 'post', ...post }));
+
+  return {
+    items,
+    hasMore: computeHasMore({ payload, offset, limit, receivedCount: items.length }),
+    nextOffset: offset + items.length,
   };
 };

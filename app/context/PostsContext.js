@@ -703,8 +703,8 @@ export const PostsProvider = ({ children }) => {
   };
 
   const addComment = async (postId, text) => {
-    if (!user) return;
-    if (!text?.trim()) return;
+    if (!user) return { error: new Error('Utente non autenticato.') };
+    if (!text?.trim()) return { error: new Error('Commento non valido.') };
     const clean = text.trim();
     const tempId = `temp-${Date.now()}`;
     const optimisticComment = {
@@ -749,7 +749,7 @@ export const PostsProvider = ({ children }) => {
           };
         }),
       );
-      return;
+      return { error };
     }
 
     if (data?.id) {
@@ -775,6 +775,7 @@ export const PostsProvider = ({ children }) => {
         };
       }),
     );
+    return { data, error: null };
   };
 
   const value = useMemo(
