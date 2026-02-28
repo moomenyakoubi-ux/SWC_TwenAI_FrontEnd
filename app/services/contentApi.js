@@ -1,4 +1,5 @@
 import { getApiBaseUrl, getSupabaseAccessToken } from '../config/api';
+import { supabase } from '../lib/supabase';
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_AVATAR_COLOR = '#E70013';
@@ -345,11 +346,22 @@ const normalizeLikeUser = (like, index) => {
 
 const normalizeMediaItem = (media) => {
   if (!media) return null;
+  const bucket = asNullableString(media.bucket) || 'post_media';
+  const path = asNullableString(media.path);
+  const resolvedPublicUrl =
+    asNullableString(media.publicUrl || media.public_url || media.url || media.image_url) ||
+    (path ? supabase.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null : null);
   return {
     mediaType: asString(media.mediaType || media.media_type || media.type || 'image'),
-    publicUrl: asNullableString(media.publicUrl || media.public_url || media.url || media.image_url),
+    publicUrl: resolvedPublicUrl,
+    bucket,
+    path,
     width: toNumber(media.width),
     height: toNumber(media.height),
+    aspectRatio: toNumber(media.aspectRatio ?? media.aspect_ratio),
+    aspect_ratio: toNumber(media.aspectRatio ?? media.aspect_ratio),
+    ratioKey: asNullableString(media.ratioKey ?? media.ratio_key),
+    ratio_key: asNullableString(media.ratioKey ?? media.ratio_key),
   };
 };
 
@@ -363,9 +375,23 @@ const normalizePostPayload = (rawPost) => {
   const rawComments = Array.isArray(rawPost.comments)
     ? rawPost.comments.map(normalizeComment).filter(Boolean)
     : [];
-  const rawMediaItems = Array.isArray(rawPost.mediaItems || rawPost.media_items)
-    ? (rawPost.mediaItems || rawPost.media_items).map(normalizeMediaItem).filter(Boolean)
+  const mediaSource =
+    rawPost.mediaItems ||
+    rawPost.media_items ||
+    rawPost.post_media;
+  const rawMediaItems = Array.isArray(mediaSource)
+    ? mediaSource.map(normalizeMediaItem).filter(Boolean)
     : [];
+  const firstMedia = rawMediaItems[0] || null;
+  const fallbackImageFromMedia =
+    rawMediaItems.find((item) => item.mediaType?.startsWith('image'))?.publicUrl || null;
+  const resolvedImage =
+    asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url) || fallbackImageFromMedia;
+  const resolvedAspectRatio =
+    toNumber(rawPost.aspectRatio ?? rawPost.aspect_ratio) ||
+    firstMedia?.aspectRatio ||
+    firstMedia?.aspect_ratio ||
+    (firstMedia?.width && firstMedia?.height ? firstMedia.width / firstMedia.height : null);
   const likesCount = toNumber(rawPost.likes_count ?? rawPost.likesCount ?? rawPost.likes?.length) ?? rawLikes.length;
   const commentsCount =
     toNumber(rawPost.comments_count ?? rawPost.commentsCount ?? rawPost.comments?.length) ?? rawComments.length;
@@ -383,13 +409,15 @@ const normalizePostPayload = (rawPost) => {
     authorAvatarUrl: asNullableString(rawPost.authorAvatarUrl || rawPost.author_avatar_url || rawPost.avatar_url),
     time: asString(rawPost.time) || formatRelativeTime(rawPost.created_at || rawPost.createdAt),
     content: asString(rawPost.content || rawPost.body || rawPost.text),
-    image: asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url),
+    image: resolvedImage,
     likes: rawLikes,
     likes_count: likesCount,
     liked_by_me: likedByMe,
     comments: rawComments,
     comments_count: commentsCount,
     mediaItems: rawMediaItems,
+    aspectRatio: resolvedAspectRatio,
+    aspect_ratio: resolvedAspectRatio,
   };
 };
 
@@ -669,6 +697,11 @@ export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0
     .map((item) => normalizePostPayload(item))
     .filter(Boolean)
     .map((post) => ({ kind: 'post', ...post }));
+  const firstPost = items[0];
+  console.log('[USER_POSTS_MEDIA_DEBUG]', {
+    postId: firstPost?.id || null,
+    mediaCount: firstPost?.mediaItems?.length || 0,
+  });
 
   return {
     items,
