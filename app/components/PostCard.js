@@ -550,6 +550,12 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   };
 
   const mediaItems = useMemo(() => post.mediaItems || [], [post.mediaItems]);
+  const aspectRatio =
+    post.mediaAspectRatio ||
+    post.aspect_ratio ||
+    (post.mediaWidth && post.mediaHeight
+      ? post.mediaWidth / post.mediaHeight
+      : null);
 
   return (
     <View style={[styles.card, isWeb && styles.webCard]}>
@@ -587,18 +593,34 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
       )}
 
       {post.image && mediaItems.length === 0 ? (
-        <Image source={{ uri: post.image }} style={styles.image} />
+        <Image
+          source={{ uri: post.image }}
+          style={[
+            styles.postImage,
+            aspectRatio ? { aspectRatio } : { aspectRatio: 1 },
+          ]}
+          resizeMode="cover"
+        />
       ) : null}
 
       {mediaItems.map((media, index) => {
         if (!media?.publicUrl) return null;
         if (media.mediaType === 'image') {
-          const aspectRatio = media.width && media.height ? media.width / media.height : undefined;
+          const mediaAspectRatio =
+            media.aspectRatio ||
+            media.aspect_ratio ||
+            (media.width && media.height ? media.width / media.height : null);
           return (
             <Image
               key={`${media.publicUrl}-${index}`}
               source={{ uri: media.publicUrl }}
-              style={[styles.mediaImage, aspectRatio ? { aspectRatio, height: undefined } : null]}
+              style={[
+                styles.mediaImage,
+                mediaAspectRatio
+                  ? { aspectRatio: mediaAspectRatio }
+                  : { aspectRatio: aspectRatio || 1 },
+              ]}
+              resizeMode="cover"
             />
           );
         }
@@ -872,15 +894,15 @@ const createStyles = (theme) => StyleSheet.create({
     minHeight: 70,
     marginBottom: theme.spacing.sm,
   },
-  image: {
+  postImage: {
     width: '100%',
-    height: 180,
+    aspectRatio: 1,
     borderRadius: theme.radius.md,
     marginBottom: theme.spacing.sm,
   },
   mediaImage: {
     width: '100%',
-    height: 180,
+    aspectRatio: 1,
     borderRadius: theme.radius.md,
     marginBottom: theme.spacing.sm,
     backgroundColor: theme.colors.surfaceMuted,
