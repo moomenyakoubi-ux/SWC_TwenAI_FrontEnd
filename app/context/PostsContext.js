@@ -566,13 +566,18 @@ export const PostsProvider = ({ children }) => {
       const res = await fetch(mediaUri);
       const blob = await res.blob();
       const extension = blob.type?.split('/')[1] || 'jpg';
-      const path = `${user.id}/${inserted.id}-${Date.now()}.${extension}`;
+      const path = `posts/${user.id}/${inserted.id}-${Date.now()}.${extension}`;
       const storagePayload = {
         bucket: 'post_media',
         path,
         contentType: blob.type || 'image/jpeg',
       };
       try {
+        console.log('[POST_MEDIA_UPLOAD]', {
+          bucket: 'post_media',
+          path,
+          contentType: blob.type,
+        });
         const { error: uploadError } = await supabase.storage
           .from('post_media')
           .upload(path, blob, {
