@@ -14,6 +14,8 @@ import {
   View,
 } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
+import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import {
   clamp,
   clampTranslationToFrame,
@@ -347,7 +349,7 @@ const ImageCropScreen = ({ route, navigation }) => {
   if (!imageUri) {
     return (
       <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
-        <View style={styles.centerState}>
+        <View style={[styles.centerState, isWeb && styles.webInsets]}>
           <Text style={styles.stateText}>Immagine non disponibile.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={handleCancel}>
             <Text style={styles.primaryButtonText}>Torna indietro</Text>
@@ -359,7 +361,7 @@ const ImageCropScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
-      <View style={[styles.root, isWeb && styles.rootWeb]}>
+      <View style={[styles.root, isWeb && styles.rootWeb, isWeb && styles.webInsets]}>
         <View style={styles.header}>
           <Text style={styles.title}>Ritaglia immagine</Text>
           <Text style={styles.subtitle}>Scegli formato, zoom e posizione.</Text>
@@ -504,6 +506,10 @@ const createStyles = (theme) =>
       minHeight: '100vh',
       paddingTop: WEB_ROOT_TOP_PADDING,
     },
+    webInsets: {
+      paddingLeft: WEB_TAB_BAR_WIDTH,
+      paddingRight: WEB_SIDE_MENU_WIDTH,
+    },
     header: {
       paddingHorizontal: theme.spacing.lg,
       gap: theme.spacing.xs,
@@ -630,11 +636,13 @@ const createStyles = (theme) =>
     actionBarWebSticky: {
       position: 'sticky',
       bottom: 0,
+      width: '100%',
+      alignSelf: 'stretch',
     },
     actionBarWebFixed: {
       position: 'fixed',
-      left: 0,
-      right: 0,
+      left: WEB_TAB_BAR_WIDTH,
+      right: WEB_SIDE_MENU_WIDTH,
       bottom: 0,
       zIndex: 60,
     },
