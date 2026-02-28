@@ -80,6 +80,33 @@ const ProfileScreen = () => {
   const [followLoading, setFollowLoading] = useState({});
   const hasSyncedLanguage = useRef(false);
 
+  const canNavigateToImageCrop = useCallback(() => {
+    if (typeof navigation?.navigate !== 'function') {
+      return false;
+    }
+
+    let currentNavigator = navigation;
+    let depth = 0;
+    while (currentNavigator && depth < 10) {
+      const state =
+        typeof currentNavigator.getState === 'function'
+          ? currentNavigator.getState()
+          : null;
+
+      if (Array.isArray(state?.routeNames) && state.routeNames.includes('ImageCrop')) {
+        return true;
+      }
+
+      currentNavigator =
+        typeof currentNavigator.getParent === 'function'
+          ? currentNavigator.getParent()
+          : null;
+      depth += 1;
+    }
+
+    return false;
+  }, [navigation]);
+
   useEffect(() => {
     const cropped = route.params?.croppedPostImage;
     if (cropped?.uri) {
@@ -208,13 +235,17 @@ const ProfileScreen = () => {
         requestId: Date.now(),
       };
 
-      if (typeof navigation?.navigate === 'function') {
-        try {
-          navigation.navigate('ImageCrop', cropParams);
-          return;
-        } catch (error) {
-          console.warn('[post-image] navigate ImageCrop failed:', error?.message || error);
-        }
+      if (!canNavigateToImageCrop()) {
+        console.warn('[post-image] ImageCrop route unavailable, using original image.');
+        setPostImageUri(selectedAsset.uri);
+        return;
+      }
+
+      try {
+        navigation.navigate('ImageCrop', cropParams);
+        return;
+      } catch (error) {
+        console.warn('[post-image] navigate ImageCrop failed:', error?.message || error);
       }
 
       setPostImageUri(selectedAsset.uri);

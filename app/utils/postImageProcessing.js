@@ -10,6 +10,10 @@ const JPEG_FORMAT =
 const WEB_JPEG_MIME = 'image/jpeg';
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const normalizePositiveInt = (value, fallback = 1) =>
+  Math.max(1, Math.floor(Number(value) || fallback));
+const normalizeQuality = (value, fallback = 0.8) =>
+  clamp(Number.isFinite(Number(value)) ? Number(value) : fallback, 0.1, 1);
 
 const isWebCanvasAvailable = () =>
   Platform.OS === 'web' &&
@@ -23,6 +27,7 @@ const loadImage = (uri) =>
       return;
     }
     const img = new window.Image();
+    img.decoding = 'async';
     if (/^https?:\/\//i.test(uri)) {
       img.crossOrigin = 'anonymous';
     }
@@ -59,20 +64,21 @@ const processWithImageManipulator = async ({
   compress,
 }) => {
   const actions = [];
-  let workingWidth = Math.max(1, Number(sourceWidth) || 1);
-  let workingHeight = Math.max(1, Number(sourceHeight) || 1);
+  let workingWidth = normalizePositiveInt(sourceWidth, 1);
+  let workingHeight = normalizePositiveInt(sourceHeight, 1);
+  const quality = normalizeQuality(compress, 0.8);
 
   if (cropRect) {
     actions.push({
       crop: {
-        originX: Math.max(0, Math.floor(cropRect.originX || 0)),
-        originY: Math.max(0, Math.floor(cropRect.originY || 0)),
-        width: Math.max(1, Math.floor(cropRect.width || 1)),
-        height: Math.max(1, Math.floor(cropRect.height || 1)),
+        originX: Math.max(0, Math.floor(cropRect.originX ?? 0)),
+        originY: Math.max(0, Math.floor(cropRect.originY ?? 0)),
+        width: normalizePositiveInt(cropRect.width, 1),
+        height: normalizePositiveInt(cropRect.height, 1),
       },
     });
-    workingWidth = Math.max(1, Math.floor(cropRect.width || 1));
-    workingHeight = Math.max(1, Math.floor(cropRect.height || 1));
+    workingWidth = normalizePositiveInt(cropRect.width, 1);
+    workingHeight = normalizePositiveInt(cropRect.height, 1);
   }
 
   const resize = getResizeForMaxLongSide(workingWidth, workingHeight, maxLongSide);
@@ -83,7 +89,7 @@ const processWithImageManipulator = async ({
   }
 
   const result = await ImageManipulator.manipulateAsync(uri, actions, {
-    compress,
+    compress: quality,
     format: JPEG_FORMAT,
   });
 
@@ -96,8 +102,6 @@ const processWithImageManipulator = async ({
 
 const processWithWebCanvas = async ({
   uri,
-  sourceWidth,
-  sourceHeight,
   cropRect,
   maxLongSide,
   compress,
@@ -107,8 +111,9 @@ const processWithWebCanvas = async ({
   }
 
   const image = await loadImage(uri);
-  const naturalWidth = Math.max(1, Number(sourceWidth) || image.naturalWidth || image.width || 1);
-  const naturalHeight = Math.max(1, Number(sourceHeight) || image.naturalHeight || image.height || 1);
+  const naturalWidth = normalizePositiveInt(image.naturalWidth || image.width, 1);
+  const naturalHeight = normalizePositiveInt(image.naturalHeight || image.height, 1);
+  const quality = normalizeQuality(compress, 0.8);
 
   let cropX = 0;
   let cropY = 0;
@@ -116,11 +121,11 @@ const processWithWebCanvas = async ({
   let cropHeight = naturalHeight;
 
   if (cropRect) {
-    // Coordinates are expressed in source-image pixels; clamp to image bounds before drawing.
-    cropX = clamp(Math.floor(cropRect.originX || 0), 0, Math.max(0, naturalWidth - 1));
-    cropY = clamp(Math.floor(cropRect.originY || 0), 0, Math.max(0, naturalHeight - 1));
-    cropWidth = clamp(Math.floor(cropRect.width || naturalWidth), 1, Math.max(1, naturalWidth - cropX));
-    cropHeight = clamp(Math.floor(cropRect.height || naturalHeight), 1, Math.max(1, naturalHeight - cropY));
+    // Crop coordinates are computed in source pixels from the preview transform.
+    cropX = clamp(Math.floor(cropRect.originX ?? 0), 0, Math.max(0, naturalWidth - 1));
+    cropY = clamp(Math.floor(cropRect.originY ?? 0), 0, Math.max(0, naturalHeight - 1));
+    cropWidth = clamp(normalizePositiveInt(cropRect.width, naturalWidth), 1, Math.max(1, naturalWidth - cropX));
+    cropHeight = clamp(normalizePositiveInt(cropRect.height, naturalHeight), 1, Math.max(1, naturalHeight - cropY));
   }
 
   const resize = getResizeForMaxLongSide(cropWidth, cropHeight, maxLongSide);
@@ -149,7 +154,10 @@ const processWithWebCanvas = async ({
     targetHeight,
   );
 
-  const blob = await canvasToBlob(canvas, compress);
+  const blob = await canvasToBlob(canvas, quality);
+  if (typeof URL?.createObjectURL !== 'function') {
+    throw new Error('URL.createObjectURL non disponibile.');
+  }
   const objectUrl = URL.createObjectURL(blob);
 
   return {
@@ -204,8 +212,6 @@ export const processPostImageForUpload = async ({
 
   return processWithWebCanvas({
     uri,
-    sourceWidth,
-    sourceHeight,
     cropRect,
     maxLongSide,
     compress,

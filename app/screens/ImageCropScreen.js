@@ -290,6 +290,10 @@ const ImageCropScreen = ({ route, navigation }) => {
     } catch (error) {
       console.warn('[image-crop] processing failed:', error?.message || error);
       if (Platform.OS === 'web') {
+        Alert.alert(
+          'Ritaglio immagine',
+          "Si e verificato un errore durante l'elaborazione. Verra usata l'immagine originale.",
+        );
         closeWithResult({
           croppedPostImage: {
             uri: imageUri,
