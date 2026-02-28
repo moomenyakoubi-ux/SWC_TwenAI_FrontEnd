@@ -274,7 +274,7 @@ export const PostsProvider = ({ children }) => {
     if (postIds.length) {
       const { data: mediaRows } = await supabase
         .from('post_media')
-        .select('post_id, media_type, bucket, path, width, height, duration_seconds')
+        .select('post_id, media_type, bucket, path, width, height, duration_seconds, ratio_key, aspect_ratio')
         .in('post_id', postIds);
       mediaMap = (mediaRows || []).reduce((acc, row) => {
         if (!acc[row.post_id]) acc[row.post_id] = [];
@@ -286,6 +286,10 @@ export const PostsProvider = ({ children }) => {
           path: row.path,
           width: row.width,
           height: row.height,
+          ratioKey: row.ratio_key || null,
+          ratio_key: row.ratio_key || null,
+          aspectRatio: row.aspect_ratio || null,
+          aspect_ratio: row.aspect_ratio || null,
           durationSeconds: row.duration_seconds,
           publicUrl: urlData?.publicUrl || null,
         });
@@ -303,6 +307,10 @@ export const PostsProvider = ({ children }) => {
       const fallbackImage = mediaItems.find((item) => item.mediaType?.startsWith('image'));
       const firstMedia = mediaItems[0];
       const image = fallbackImage?.publicUrl || null;
+      const postAspectRatio =
+        firstMedia?.aspectRatio ||
+        firstMedia?.aspect_ratio ||
+        (firstMedia?.width && firstMedia?.height ? firstMedia.width / firstMedia.height : null);
 
       const likes = (post.post_likes || []).map((like) => {
         const likeProfile = like.profiles || {};
@@ -344,6 +352,8 @@ export const PostsProvider = ({ children }) => {
         mediaPath: firstMedia?.path || null,
         mediaBucket: firstMedia?.bucket || null,
         mediaItems,
+        aspectRatio: postAspectRatio,
+        aspect_ratio: postAspectRatio,
         likes,
         likes_count: likes.length,
         comments_count: comments.length,
@@ -519,7 +529,7 @@ export const PostsProvider = ({ children }) => {
     ]);
   };
 
-  const createPost = async ({ content, mediaUri }) => {
+  const createPost = async ({ content, media }) => {
     if (!user) {
       return { error: new Error('Utente non autenticato.') };
     }
@@ -527,6 +537,24 @@ export const PostsProvider = ({ children }) => {
     if (!clean) {
       return { error: new Error('Il contenuto del post e richiesto.') };
     }
+    const normalizedMedia = media?.uri
+      ? {
+          uri: media.uri,
+          width: Number.isFinite(Number(media?.width)) ? Number(media.width) : null,
+          height: Number.isFinite(Number(media?.height)) ? Number(media.height) : null,
+          ratioKey: typeof media?.ratioKey === 'string' ? media.ratioKey : null,
+        }
+      : null;
+    const mediaAspectRatio =
+      normalizedMedia?.width && normalizedMedia?.height
+        ? normalizedMedia.width / normalizedMedia.height
+        : null;
+    console.log('[POST_MEDIA_UPLOAD_INPUT]', {
+      ratioKey: normalizedMedia?.ratioKey || null,
+      width: normalizedMedia?.width || null,
+      height: normalizedMedia?.height || null,
+      ar: mediaAspectRatio,
+    });
 
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (authError) {
@@ -562,8 +590,9 @@ export const PostsProvider = ({ children }) => {
     let image;
     let mediaPath = null;
     let mediaBucket = null;
-    if (mediaUri) {
-      const res = await fetch(mediaUri);
+    let optimisticMediaItems = [];
+    if (normalizedMedia?.uri) {
+      const res = await fetch(normalizedMedia.uri);
       const blob = await res.blob();
       const extension = blob.type?.split('/')[1] || 'jpg';
       const path = `posts/${user.id}/${inserted.id}-${Date.now()}.${extension}`;
@@ -601,10 +630,19 @@ export const PostsProvider = ({ children }) => {
         media_type: mediaType,
         bucket: 'post_media',
         path,
+        width: normalizedMedia.width,
+        height: normalizedMedia.height,
+        ratio_key: normalizedMedia.ratioKey,
+        aspect_ratio: mediaAspectRatio,
       };
       try {
-        const { error: mediaError } = await supabase.from('post_media').insert(postMediaPayload);
+        const { data: insertedMediaRow, error: mediaError } = await supabase
+          .from('post_media')
+          .insert(postMediaPayload)
+          .select('*')
+          .single();
         if (mediaError) throw mediaError;
+        console.log('[POST_MEDIA_DB_ROW]', insertedMediaRow);
       } catch (error) {
         return {
           error: buildPostPublishError({
@@ -619,6 +657,21 @@ export const PostsProvider = ({ children }) => {
       image = urlData?.publicUrl;
       mediaPath = path;
       mediaBucket = 'post_media';
+      optimisticMediaItems = [
+        {
+          mediaType,
+          bucket: 'post_media',
+          path,
+          width: normalizedMedia.width,
+          height: normalizedMedia.height,
+          ratioKey: normalizedMedia.ratioKey,
+          ratio_key: normalizedMedia.ratioKey,
+          aspectRatio: mediaAspectRatio,
+          aspect_ratio: mediaAspectRatio,
+          publicUrl: image,
+          durationSeconds: null,
+        },
+      ];
     }
 
     const authorName = 'Tu';
@@ -635,6 +688,9 @@ export const PostsProvider = ({ children }) => {
       image,
       mediaPath,
       mediaBucket,
+      mediaItems: optimisticMediaItems,
+      aspectRatio: mediaAspectRatio,
+      aspect_ratio: mediaAspectRatio,
       likes: [],
       likes_count: 0,
       comments: [],

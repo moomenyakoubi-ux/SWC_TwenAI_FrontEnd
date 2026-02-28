@@ -30,6 +30,15 @@ const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const FOLLOW_PAGE_SIZE = 20;
+const SQUARE_TOLERANCE = 0.08;
+
+const inferRatioKeyFromSize = (width, height) => {
+  const safeWidth = Math.max(1, Number(width) || 1);
+  const safeHeight = Math.max(1, Number(height) || 1);
+  const delta = Math.abs(safeWidth - safeHeight) / Math.max(safeWidth, safeHeight);
+  if (delta <= SQUARE_TOLERANCE) return '1:1';
+  return safeWidth > safeHeight ? '16:9' : '4:5';
+};
 
 const getInitials = (value) =>
   String(value || '')
@@ -61,7 +70,7 @@ const ProfileScreen = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [deletingAvatar, setDeletingAvatar] = useState(false);
   const [postContent, setPostContent] = useState('');
-  const [postImageUri, setPostImageUri] = useState('');
+  const [postImageMeta, setPostImageMeta] = useState(null);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState(null);
   const [activeFollowTab, setActiveFollowTab] = useState(null);
@@ -110,7 +119,7 @@ const ProfileScreen = () => {
   useEffect(() => {
     const cropped = route.params?.croppedPostImage;
     if (cropped?.uri) {
-      setPostImageUri(cropped.uri);
+      setPostImageMeta(cropped);
       navigation.setParams({ croppedPostImage: undefined });
     }
   }, [navigation, route.params?.croppedPostImage]);
@@ -237,7 +246,12 @@ const ProfileScreen = () => {
 
       if (!canNavigateToImageCrop()) {
         console.warn('[post-image] ImageCrop route unavailable, using original image.');
-        setPostImageUri(selectedAsset.uri);
+        setPostImageMeta({
+          uri: selectedAsset.uri,
+          width: selectedAsset.width || null,
+          height: selectedAsset.height || null,
+          ratioKey: inferRatioKeyFromSize(selectedAsset.width, selectedAsset.height),
+        });
         return;
       }
 
@@ -248,7 +262,12 @@ const ProfileScreen = () => {
         console.warn('[post-image] navigate ImageCrop failed:', error?.message || error);
       }
 
-      setPostImageUri(selectedAsset.uri);
+      setPostImageMeta({
+        uri: selectedAsset.uri,
+        width: selectedAsset.width || null,
+        height: selectedAsset.height || null,
+        ratioKey: inferRatioKeyFromSize(selectedAsset.width, selectedAsset.height),
+      });
     }
   };
 
@@ -256,9 +275,10 @@ const ProfileScreen = () => {
     if (posting) return;
     setPostError(null);
     setPosting(true);
+    console.log('[POST_MEDIA_SELECTED]', postImageMeta);
     const { error: createError } = await createPost({
       content: postContent,
-      mediaUri: postImageUri || null,
+      media: postImageMeta,
     });
     if (createError) {
       setPostError({
@@ -267,7 +287,7 @@ const ProfileScreen = () => {
       });
     } else {
       setPostContent('');
-      setPostImageUri('');
+      setPostImageMeta(null);
     }
     setPosting(false);
   };
@@ -964,8 +984,8 @@ const ProfileScreen = () => {
               <Ionicons name="image" size={18} color={theme.colors.card} />
               <Text style={styles.uploadButtonText}>Aggiungi media</Text>
             </TouchableOpacity>
-            {postImageUri ? (
-              <Image source={{ uri: postImageUri }} style={styles.preview} />
+            {postImageMeta?.uri ? (
+              <Image source={{ uri: postImageMeta.uri }} style={styles.preview} />
             ) : (
               <View style={[styles.preview, styles.previewFallback]}>
                 <Ionicons name="image" size={18} color={theme.colors.muted} />

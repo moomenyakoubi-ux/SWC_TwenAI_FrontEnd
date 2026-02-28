@@ -462,14 +462,21 @@ const ImageCropScreen = ({ route, navigation }) => {
         maxLongSide: 1600,
         compress: 0.8,
       });
+      const selectedRatioKey = ratioKey;
+      console.log('[CROP_CONFIRM]', {
+        ratioKey: selectedRatioKey,
+        width: processed.width,
+        height: processed.height,
+        ar: processed.width / processed.height,
+        uri: processed.uri,
+      });
 
       closeWithResult({
         croppedPostImage: {
           uri: processed.uri,
           width: processed.width,
           height: processed.height,
-          ratioKey,
-          requestId,
+          ratioKey: selectedRatioKey,
         },
       });
     } catch (error) {
@@ -485,7 +492,6 @@ const ImageCropScreen = ({ route, navigation }) => {
             width: sourceSize.width,
             height: sourceSize.height,
             ratioKey,
-            requestId,
           },
         });
       } else {
@@ -501,7 +507,6 @@ const ImageCropScreen = ({ route, navigation }) => {
     frameLayout.width,
     imageUri,
     processing,
-    requestId,
     ratioKey,
     sourceSize.height,
     sourceSize.width,
