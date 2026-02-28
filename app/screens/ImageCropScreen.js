@@ -2,14 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Image,
   PanResponder,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
@@ -26,6 +27,9 @@ const RATIO_OPTIONS = [
 ];
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
+const ACTION_BAR_HEIGHT = 88;
+const WEB_MAX_FRAME_WIDTH = 520;
+const WEB_ROOT_TOP_PADDING = 16;
 
 const readImageSize = async (uri, fallbackWidth, fallbackHeight) => {
   const width = Number(fallbackWidth);
@@ -111,6 +115,8 @@ const ZoomSlider = ({ value, onChange, minimum = MIN_ZOOM, maximum = MAX_ZOOM, t
 const ImageCropScreen = ({ route, navigation }) => {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const isWeb = Platform.OS === 'web';
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const imageUri = route.params?.imageUri || '';
   const returnScreen = route.params?.returnScreen || 'Profilo';
   const requestId = route.params?.requestId || Date.now();
@@ -127,9 +133,7 @@ const ImageCropScreen = ({ route, navigation }) => {
   });
   const [loadingSize, setLoadingSize] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [stageWidth, setStageWidth] = useState(
-    Math.min(Dimensions.get('window').width - 32, 420),
-  );
+  const [bodyWidth, setBodyWidth] = useState(0);
 
   const translateRef = useRef(translate);
   const zoomRef = useRef(zoom);
@@ -167,17 +171,35 @@ const ImageCropScreen = ({ route, navigation }) => {
     [ratioKey],
   );
 
+  const supportsStickyActionBar = useMemo(() => {
+    if (!isWeb || typeof window === 'undefined') return false;
+    const cssSupports = window.CSS?.supports;
+    if (typeof cssSupports !== 'function') return false;
+    return cssSupports('position', 'sticky') || cssSupports('position', '-webkit-sticky');
+  }, [isWeb]);
+
+  const useFixedActionBar = isWeb && !supportsStickyActionBar;
+  const horizontalPadding = theme.spacing.lg;
+  const contentPaddingBottom = isWeb
+    ? ACTION_BAR_HEIGHT + theme.spacing.lg
+    : theme.spacing.lg;
+  const availableWidth = useMemo(() => {
+    const containerWidth = bodyWidth > 0 ? bodyWidth : windowWidth;
+    return Math.max(220, containerWidth - horizontalPadding * 2);
+  }, [bodyWidth, horizontalPadding, windowWidth]);
+
   const frameLayout = useMemo(() => {
-    const viewportHeight = Dimensions.get('window').height;
+    const viewportHeight = Math.max(320, Number(windowHeight) || 320);
     const maxHeight = Math.max(220, Math.min(500, viewportHeight * 0.55));
-    let width = Math.min(stageWidth, 460);
+    const maxWidth = isWeb ? WEB_MAX_FRAME_WIDTH : 460;
+    let width = Math.max(220, Math.min(availableWidth, maxWidth));
     let height = width / activeRatio.value;
     if (height > maxHeight) {
       height = maxHeight;
       width = height * activeRatio.value;
     }
     return { width, height };
-  }, [activeRatio.value, stageWidth]);
+  }, [activeRatio.value, availableWidth, isWeb, windowHeight]);
 
   const baseScale = useMemo(
     () =>
@@ -324,7 +346,7 @@ const ImageCropScreen = ({ route, navigation }) => {
 
   if (!imageUri) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
         <View style={styles.centerState}>
           <Text style={styles.stateText}>Immagine non disponibile.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={handleCancel}>
@@ -336,94 +358,128 @@ const ImageCropScreen = ({ route, navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Ritaglia immagine</Text>
-        <Text style={styles.subtitle}>Scegli formato, zoom e posizione.</Text>
-
-        <View style={styles.ratioRow}>
-          {RATIO_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[
-                styles.ratioButton,
-                ratioKey === option.key && styles.ratioButtonActive,
-              ]}
-              onPress={() => {
-                setRatioKey(option.key);
-                setTranslate({ x: 0, y: 0 });
-              }}
-              disabled={processing}
-            >
-              <Text
-                style={[
-                  styles.ratioButtonText,
-                  ratioKey === option.key && styles.ratioButtonTextActive,
-                ]}
-              >
-                {option.key}
-              </Text>
-            </TouchableOpacity>
-          ))}
+    <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
+      <View style={[styles.root, isWeb && styles.rootWeb]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Ritaglia immagine</Text>
+          <Text style={styles.subtitle}>Scegli formato, zoom e posizione.</Text>
         </View>
 
         <View
-          style={styles.stage}
+          style={styles.body}
           onLayout={(event) => {
-            const width = Math.max(280, Math.floor(event.nativeEvent.layout.width));
-            setStageWidth(width);
+            const width = Math.max(220, Math.floor(event.nativeEvent.layout.width));
+            setBodyWidth(width);
           }}
         >
-          <View
-            style={[
-              styles.cropFrame,
+          <ScrollView
+            style={styles.bodyScroll}
+            contentContainerStyle={[
+              styles.bodyContent,
               {
-                width: frameLayout.width,
-                height: frameLayout.height,
+                paddingHorizontal: horizontalPadding,
+                paddingBottom: contentPaddingBottom,
               },
             ]}
-            {...panResponder.panHandlers}
+            showsVerticalScrollIndicator
           >
-            {loadingSize ? (
-              <ActivityIndicator size="small" color={theme.colors.secondary} />
-            ) : (
-              <Image
-                source={{ uri: imageUri }}
-                style={{
-                  width: displayedWidth,
-                  height: displayedHeight,
-                  transform: [
-                    { translateX: translate.x },
-                    { translateY: translate.y },
-                  ],
-                }}
-                resizeMode="cover"
-              />
-            )}
-          </View>
+            <View style={styles.ratioRow}>
+              {RATIO_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.ratioButton,
+                    ratioKey === option.key && styles.ratioButtonActive,
+                  ]}
+                  onPress={() => {
+                    setRatioKey(option.key);
+                    setTranslate({ x: 0, y: 0 });
+                  }}
+                  disabled={processing}
+                >
+                  <Text
+                    style={[
+                      styles.ratioButtonText,
+                      ratioKey === option.key && styles.ratioButtonTextActive,
+                    ]}
+                  >
+                    {option.key}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.stage}>
+              <View
+                style={[
+                  styles.cropFrame,
+                  {
+                    width: frameLayout.width,
+                    height: frameLayout.height,
+                  },
+                ]}
+                {...panResponder.panHandlers}
+              >
+                {loadingSize ? (
+                  <ActivityIndicator size="small" color={theme.colors.secondary} />
+                ) : (
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={{
+                      width: displayedWidth,
+                      height: displayedHeight,
+                      transform: [
+                        { translateX: translate.x },
+                        { translateY: translate.y },
+                      ],
+                    }}
+                    resizeMode="cover"
+                  />
+                )}
+              </View>
+            </View>
+
+            <ZoomSlider value={zoom} onChange={handleChangeZoom} theme={theme} />
+          </ScrollView>
         </View>
 
-        <ZoomSlider value={zoom} onChange={handleChangeZoom} theme={theme} />
-
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.secondaryButton, processing && styles.buttonDisabled]}
-            onPress={handleCancel}
-            disabled={processing}
-          >
-            <Text style={styles.secondaryButtonText}>Annulla</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.primaryButton, processing && styles.buttonDisabled]}
-            onPress={handleConfirm}
-            disabled={processing || loadingSize}
-          >
-            {processing ? (
-              <ActivityIndicator size="small" color={theme.colors.card} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Conferma</Text>
-            )}
-          </TouchableOpacity>
+        <View
+          style={[
+            styles.actionBar,
+            isWeb && styles.actionBarWeb,
+            isWeb && (useFixedActionBar ? styles.actionBarWebFixed : styles.actionBarWebSticky),
+          ]}
+        >
+          <View style={[styles.actionsRow, isWeb ? styles.actionsRowWeb : styles.actionsRowMobile]}>
+            <TouchableOpacity
+              style={[
+                styles.secondaryButton,
+                styles.actionButton,
+                isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
+                processing && styles.buttonDisabled,
+              ]}
+              onPress={handleCancel}
+              disabled={processing}
+            >
+              <Text style={styles.secondaryButtonText}>Annulla</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                styles.actionButton,
+                isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
+                processing && styles.buttonDisabled,
+              ]}
+              onPress={handleConfirm}
+              disabled={processing || loadingSize}
+            >
+              {processing ? (
+                <ActivityIndicator size="small" color={theme.colors.card} />
+              ) : (
+                <Text style={styles.primaryButtonText}>Conferma</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -436,11 +492,32 @@ const createStyles = (theme) =>
       flex: 1,
       backgroundColor: theme.colors.background,
     },
-    container: {
+    safeAreaWeb: {
+      width: '100%',
+      minHeight: '100vh',
+    },
+    root: {
       flex: 1,
+      width: '100%',
+    },
+    rootWeb: {
+      minHeight: '100vh',
+      paddingTop: WEB_ROOT_TOP_PADDING,
+    },
+    header: {
       paddingHorizontal: theme.spacing.lg,
-      paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.lg,
+      gap: theme.spacing.xs,
+      paddingBottom: theme.spacing.sm,
+    },
+    body: {
+      flex: 1,
+      width: '100%',
+    },
+    bodyScroll: {
+      flex: 1,
+    },
+    bodyContent: {
+      paddingTop: theme.spacing.sm,
       gap: theme.spacing.md,
     },
     title: {
@@ -457,6 +534,7 @@ const createStyles = (theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.sm,
+      flexWrap: 'wrap',
     },
     ratioButton: {
       paddingVertical: 8,
@@ -478,7 +556,7 @@ const createStyles = (theme) =>
       color: theme.colors.card,
     },
     stage: {
-      flex: 1,
+      width: '100%',
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: 260,
@@ -525,32 +603,74 @@ const createStyles = (theme) =>
       borderColor: theme.colors.card,
     },
     actionsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'stretch',
       gap: theme.spacing.sm,
+      width: '100%',
     },
-    primaryButton: {
-      flex: 1,
+    actionsRowWeb: {
+      flexDirection: 'row',
+    },
+    actionsRowMobile: {
+      flexDirection: 'column',
+    },
+    actionBar: {
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+      paddingHorizontal: theme.spacing.lg,
+      paddingTop: theme.spacing.sm,
+      paddingBottom: theme.spacing.lg,
+      backgroundColor: theme.colors.background,
+      minHeight: ACTION_BAR_HEIGHT,
+    },
+    actionBarWeb: {
+      backgroundColor: '#ffffff',
+      borderTopColor: '#eeeeee',
+      zIndex: 50,
+    },
+    actionBarWebSticky: {
+      position: 'sticky',
+      bottom: 0,
+    },
+    actionBarWebFixed: {
+      position: 'fixed',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 60,
+    },
+    actionButton: {
       minHeight: 44,
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.secondary,
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: theme.spacing.md,
+    },
+    actionButtonWeb: {
+      flex: 1,
+    },
+    actionButtonMobile: {
+      width: '100%',
+    },
+    primaryButton: {
+      minHeight: 44,
+      borderRadius: theme.radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: theme.spacing.md,
+      backgroundColor: theme.colors.secondary,
     },
     primaryButtonText: {
       color: theme.colors.card,
       fontWeight: '800',
     },
     secondaryButton: {
-      flex: 1,
       minHeight: 44,
       borderRadius: theme.radius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: theme.spacing.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
       backgroundColor: theme.colors.card,
     },
     secondaryButtonText: {
