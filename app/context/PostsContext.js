@@ -43,6 +43,37 @@ const formatTime = (value) => {
   return `${days}g`;
 };
 
+const buildPostPublishError = ({ tableName, payload, error }) => {
+  const code = error?.code || 'no-code';
+  const message = error?.message || 'Errore sconosciuto.';
+  const details = error?.details || null;
+  const hint = error?.hint || null;
+  const safeTableName = tableName || 'unknown_table';
+
+  console.error(
+    '[POST_PUBLISH] table=',
+    safeTableName,
+    'payload=',
+    payload,
+    'error=',
+    {
+      code,
+      message,
+      details,
+      hint,
+      raw: error,
+    },
+  );
+
+  const wrapped = new Error(message);
+  wrapped.tableName = safeTableName;
+  wrapped.code = code;
+  wrapped.details = details;
+  wrapped.hint = hint;
+  wrapped.uiMessage = `${safeTableName}: ${message} (${code})`;
+  return wrapped;
+};
+
 export const PostsProvider = ({ children }) => {
   const { user, loading } = useSession();
   const { currentUserId, currentUserName, currentUserAvatar } = useCurrentUserProfile({
@@ -497,14 +528,35 @@ export const PostsProvider = ({ children }) => {
       return { error: new Error('Il contenuto del post e richiesto.') };
     }
 
-    const { data: inserted, error: insertError } = await supabase
-      .from('posts')
-      .insert({ author_id: user.id, content: clean })
-      .select('*')
-      .single();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      console.error('[POST_PUBLISH] auth.getUser error=', {
+        code: authError?.code || 'no-code',
+        message: authError?.message || 'Errore sconosciuto.',
+        details: authError?.details || null,
+        hint: authError?.hint || null,
+      });
+    }
+    console.log('[POST_PUBLISH] auth.uid=', authData?.user?.id || null);
 
-    if (insertError) {
-      return { error: insertError };
+    const postsPayload = { author_id: user.id, content: clean };
+    let inserted = null;
+    try {
+      const { data, error: insertError } = await supabase
+        .from('posts')
+        .insert(postsPayload)
+        .select('*')
+        .single();
+      if (insertError) throw insertError;
+      inserted = data;
+    } catch (error) {
+      return {
+        error: buildPostPublishError({
+          tableName: 'posts',
+          payload: postsPayload,
+          error,
+        }),
+      };
     }
 
     let image;
@@ -515,25 +567,47 @@ export const PostsProvider = ({ children }) => {
       const blob = await res.blob();
       const extension = blob.type?.split('/')[1] || 'jpg';
       const path = `${user.id}/${inserted.id}-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from('post_media').upload(path, blob, {
+      const storagePayload = {
+        bucket: 'post_media',
+        path,
         contentType: blob.type || 'image/jpeg',
-      });
-
-      if (uploadError) {
-        return { error: uploadError };
+      };
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('post_media')
+          .upload(path, blob, {
+            contentType: storagePayload.contentType,
+          });
+        if (uploadError) throw uploadError;
+      } catch (error) {
+        return {
+          error: buildPostPublishError({
+            tableName: 'storage.objects',
+            payload: storagePayload,
+            error,
+          }),
+        };
       }
 
       const mediaType = blob.type?.startsWith('video') ? 'video' : 'image';
-      const { error: mediaError } = await supabase.from('post_media').insert({
+      const postMediaPayload = {
         post_id: inserted.id,
         author_id: user.id,
         media_type: mediaType,
         bucket: 'post_media',
         path,
-      });
-
-      if (mediaError) {
-        return { error: mediaError };
+      };
+      try {
+        const { error: mediaError } = await supabase.from('post_media').insert(postMediaPayload);
+        if (mediaError) throw mediaError;
+      } catch (error) {
+        return {
+          error: buildPostPublishError({
+            tableName: 'post_media',
+            payload: postMediaPayload,
+            error,
+          }),
+        };
       }
 
       const { data: urlData } = supabase.storage.from('post_media').getPublicUrl(path);

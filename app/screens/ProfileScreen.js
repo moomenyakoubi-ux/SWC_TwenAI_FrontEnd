@@ -261,7 +261,10 @@ const ProfileScreen = () => {
       mediaUri: postImageUri || null,
     });
     if (createError) {
-      setPostError(createError);
+      setPostError({
+        ...createError,
+        message: createError?.uiMessage || createError?.message || 'Errore sconosciuto.',
+      });
     } else {
       setPostContent('');
       setPostImageUri('');
