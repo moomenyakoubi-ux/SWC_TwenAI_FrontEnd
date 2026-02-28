@@ -2,9 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
+  Modal,
   PanResponder,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -23,15 +27,52 @@ import {
 } from '../utils/imageCrop';
 import { processPostImageForUpload } from '../utils/postImageProcessing';
 
-const RATIO_OPTIONS = [
-  { key: '1:1', value: 1 },
-  { key: '4:5', value: 4 / 5 },
+const RATIOS = [
+  {
+    key: '1:1',
+    label: '1:1',
+    description: 'Quadrato',
+    ratio: 1,
+    orientation: 'square',
+  },
+  {
+    key: '4:5',
+    label: '4:5',
+    description: 'Verticale',
+    ratio: 4 / 5,
+    orientation: 'portrait',
+  },
+  {
+    key: '3:4',
+    label: '3:4',
+    description: 'Verticale classico',
+    ratio: 3 / 4,
+    orientation: 'portrait',
+  },
+  {
+    key: '16:9',
+    label: '16:9',
+    description: 'Orizzontale',
+    ratio: 16 / 9,
+    orientation: 'landscape',
+  },
+  {
+    key: '9:16',
+    label: '9:16',
+    description: 'Storia',
+    ratio: 9 / 16,
+    orientation: 'portrait',
+  },
 ];
+const PRIMARY_RATIO_KEYS = ['1:1', '4:5'];
+const EXTRA_RATIO_KEYS = ['3:4', '16:9', '9:16'];
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
 const ACTION_BAR_HEIGHT = 88;
 const WEB_MAX_FRAME_WIDTH = 520;
 const WEB_ROOT_TOP_PADDING = 16;
+const SWIPE_CLOSE_THRESHOLD = 80;
+const SQUARE_TOLERANCE = 0.08;
 
 const readImageSize = async (uri, fallbackWidth, fallbackHeight) => {
   const width = Number(fallbackWidth);
@@ -124,7 +165,10 @@ const ImageCropScreen = ({ route, navigation }) => {
   const requestId = route.params?.requestId || Date.now();
   const fallbackWidth = route.params?.imageWidth || 0;
   const fallbackHeight = route.params?.imageHeight || 0;
-  const initialRatio = route.params?.initialRatio === '4:5' ? '4:5' : '1:1';
+  const initialRatioParam = route.params?.initialRatio;
+  const initialRatio = RATIOS.some((item) => item.key === initialRatioParam)
+    ? initialRatioParam
+    : '1:1';
 
   const [ratioKey, setRatioKey] = useState(initialRatio);
   const [zoom, setZoom] = useState(1);
@@ -136,10 +180,12 @@ const ImageCropScreen = ({ route, navigation }) => {
   const [loadingSize, setLoadingSize] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [bodyWidth, setBodyWidth] = useState(0);
+  const [isMoreSheetVisible, setIsMoreSheetVisible] = useState(false);
 
   const translateRef = useRef(translate);
   const zoomRef = useRef(zoom);
   const panStartRef = useRef({ x: 0, y: 0 });
+  const sheetTranslateY = useRef(new Animated.Value(Math.max(windowHeight, 1))).current;
 
   useEffect(() => {
     translateRef.current = translate;
@@ -168,10 +214,33 @@ const ImageCropScreen = ({ route, navigation }) => {
     };
   }, [fallbackHeight, fallbackWidth, imageUri]);
 
+  const primaryRatios = useMemo(
+    () => RATIOS.filter((item) => PRIMARY_RATIO_KEYS.includes(item.key)),
+    [],
+  );
+  const extraRatios = useMemo(
+    () => RATIOS.filter((item) => EXTRA_RATIO_KEYS.includes(item.key)),
+    [],
+  );
   const activeRatio = useMemo(
-    () => RATIO_OPTIONS.find((item) => item.key === ratioKey) || RATIO_OPTIONS[0],
+    () => RATIOS.find((item) => item.key === ratioKey) || RATIOS[0],
     [ratioKey],
   );
+  const recommendedRatioKey = useMemo(() => {
+    const width = Math.max(1, sourceSize.width);
+    const height = Math.max(1, sourceSize.height);
+    const delta = Math.abs(width - height) / Math.max(width, height);
+    if (delta <= SQUARE_TOLERANCE) {
+      return '1:1';
+    }
+    if (width > height) {
+      return '16:9';
+    }
+    return '4:5';
+  }, [sourceSize.height, sourceSize.width]);
+  const isPrimaryRatioSelected = PRIMARY_RATIO_KEYS.includes(ratioKey);
+  const moreButtonLabel = isPrimaryRatioSelected ? 'Altro ▾' : `Altro (${ratioKey})`;
+  const sheetClosedTranslateY = Math.max(windowHeight, 360);
 
   const supportsStickyActionBar = useMemo(() => {
     if (!isWeb || typeof window === 'undefined') return false;
@@ -195,13 +264,13 @@ const ImageCropScreen = ({ route, navigation }) => {
     const maxHeight = Math.max(220, Math.min(500, viewportHeight * 0.55));
     const maxWidth = isWeb ? WEB_MAX_FRAME_WIDTH : 460;
     let width = Math.max(220, Math.min(availableWidth, maxWidth));
-    let height = width / activeRatio.value;
+    let height = width / activeRatio.ratio;
     if (height > maxHeight) {
       height = maxHeight;
-      width = height * activeRatio.value;
+      width = height * activeRatio.ratio;
     }
     return { width, height };
-  }, [activeRatio.value, availableWidth, isWeb, windowHeight]);
+  }, [activeRatio.ratio, availableWidth, isWeb, windowHeight]);
 
   const baseScale = useMemo(
     () =>
@@ -239,6 +308,70 @@ const ImageCropScreen = ({ route, navigation }) => {
     setTranslate((previous) => clampTranslation(previous.x, previous.y, zoom));
   }, [clampTranslation, zoom, ratioKey]);
 
+  useEffect(() => {
+    if (!isMoreSheetVisible) {
+      sheetTranslateY.setValue(sheetClosedTranslateY);
+      return;
+    }
+    sheetTranslateY.setValue(sheetClosedTranslateY);
+    Animated.timing(sheetTranslateY, {
+      toValue: 0,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [isMoreSheetVisible, sheetClosedTranslateY, sheetTranslateY]);
+
+  const closeMoreSheet = useCallback(() => {
+    if (!isMoreSheetVisible) return;
+    Animated.timing(sheetTranslateY, {
+      toValue: sheetClosedTranslateY,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      setIsMoreSheetVisible(false);
+      sheetTranslateY.setValue(sheetClosedTranslateY);
+    });
+  }, [isMoreSheetVisible, sheetClosedTranslateY, sheetTranslateY]);
+
+  const sheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) => {
+          if (isWeb) return false;
+          return gestureState.dy > 2 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          const nextTranslateY = clamp(gestureState.dy, 0, sheetClosedTranslateY);
+          sheetTranslateY.setValue(nextTranslateY);
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          if (gestureState.dy > SWIPE_CLOSE_THRESHOLD) {
+            closeMoreSheet();
+            return;
+          }
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 20,
+            stiffness: 220,
+            mass: 0.8,
+          }).start();
+        },
+      }),
+    [closeMoreSheet, isWeb, sheetClosedTranslateY, sheetTranslateY],
+  );
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -264,6 +397,33 @@ const ImageCropScreen = ({ route, navigation }) => {
       setTranslate((previous) => clampTranslation(previous.x, previous.y, safeZoom));
     },
     [clampTranslation],
+  );
+
+  const applyRatio = useCallback((nextRatioKey) => {
+    setRatioKey(nextRatioKey);
+    setZoom(MIN_ZOOM);
+    setTranslate({ x: 0, y: 0 });
+  }, []);
+
+  const handleSelectPrimaryRatio = useCallback(
+    (nextRatioKey) => {
+      if (processing) return;
+      applyRatio(nextRatioKey);
+    },
+    [applyRatio, processing],
+  );
+
+  const handleOpenMore = useCallback(() => {
+    if (processing) return;
+    setIsMoreSheetVisible(true);
+  }, [processing]);
+
+  const handleSelectExtraRatio = useCallback(
+    (nextRatioKey) => {
+      applyRatio(nextRatioKey);
+      closeMoreSheet();
+    },
+    [applyRatio, closeMoreSheet],
   );
 
   const closeWithResult = useCallback(
@@ -308,6 +468,7 @@ const ImageCropScreen = ({ route, navigation }) => {
           uri: processed.uri,
           width: processed.width,
           height: processed.height,
+          ratioKey,
           requestId,
         },
       });
@@ -323,6 +484,7 @@ const ImageCropScreen = ({ route, navigation }) => {
             uri: imageUri,
             width: sourceSize.width,
             height: sourceSize.height,
+            ratioKey,
             requestId,
           },
         });
@@ -340,6 +502,7 @@ const ImageCropScreen = ({ route, navigation }) => {
     imageUri,
     processing,
     requestId,
+    ratioKey,
     sourceSize.height,
     sourceSize.width,
     translate.x,
@@ -360,131 +523,233 @@ const ImageCropScreen = ({ route, navigation }) => {
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
-      <View style={[styles.root, isWeb && styles.rootWeb, isWeb && styles.webInsets]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Ritaglia immagine</Text>
-          <Text style={styles.subtitle}>Scegli formato, zoom e posizione.</Text>
-        </View>
+    <>
+      <SafeAreaView style={[styles.safeArea, isWeb && styles.safeAreaWeb]}>
+        <View style={[styles.root, isWeb && styles.rootWeb, isWeb && styles.webInsets]}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Ritaglia immagine</Text>
+            <Text style={styles.subtitle}>Scegli formato, zoom e posizione.</Text>
+          </View>
 
-        <View
-          style={styles.body}
-          onLayout={(event) => {
-            const width = Math.max(220, Math.floor(event.nativeEvent.layout.width));
-            setBodyWidth(width);
-          }}
-        >
-          <ScrollView
-            style={styles.bodyScroll}
-            contentContainerStyle={[
-              styles.bodyContent,
-              {
-                paddingHorizontal: horizontalPadding,
-                paddingBottom: contentPaddingBottom,
-              },
-            ]}
-            showsVerticalScrollIndicator
+          <View
+            style={styles.body}
+            onLayout={(event) => {
+              const width = Math.max(220, Math.floor(event.nativeEvent.layout.width));
+              setBodyWidth(width);
+            }}
           >
-            <View style={styles.ratioRow}>
-              {RATIO_OPTIONS.map((option) => (
+            <ScrollView
+              style={styles.bodyScroll}
+              contentContainerStyle={[
+                styles.bodyContent,
+                {
+                  paddingHorizontal: horizontalPadding,
+                  paddingBottom: contentPaddingBottom,
+                },
+              ]}
+              showsVerticalScrollIndicator
+            >
+              <View style={styles.ratioRow}>
+                {primaryRatios.map((option) => {
+                  const isActive = ratioKey === option.key;
+                  const isRecommended = recommendedRatioKey === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[styles.ratioButton, isActive && styles.ratioButtonActive]}
+                      onPress={() => handleSelectPrimaryRatio(option.key)}
+                      disabled={processing}
+                    >
+                      <View style={styles.ratioButtonContent}>
+                        <Text
+                          style={[
+                            styles.ratioButtonText,
+                            isActive && styles.ratioButtonTextActive,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                        {isRecommended ? (
+                          <View
+                            style={[
+                              styles.recommendedBadge,
+                              isActive && styles.recommendedBadgeActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.recommendedBadgeText,
+                                isActive && styles.recommendedBadgeTextActive,
+                              ]}
+                            >
+                              Consigliato
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
                 <TouchableOpacity
-                  key={option.key}
                   style={[
                     styles.ratioButton,
-                    ratioKey === option.key && styles.ratioButtonActive,
+                    !isPrimaryRatioSelected && styles.ratioButtonActive,
                   ]}
-                  onPress={() => {
-                    setRatioKey(option.key);
-                    setTranslate({ x: 0, y: 0 });
-                  }}
+                  onPress={handleOpenMore}
                   disabled={processing}
                 >
                   <Text
                     style={[
                       styles.ratioButtonText,
-                      ratioKey === option.key && styles.ratioButtonTextActive,
+                      !isPrimaryRatioSelected && styles.ratioButtonTextActive,
                     ]}
                   >
-                    {option.key}
+                    {moreButtonLabel}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.stage}>
-              <View
-                style={[
-                  styles.cropFrame,
-                  {
-                    width: frameLayout.width,
-                    height: frameLayout.height,
-                  },
-                ]}
-                {...panResponder.panHandlers}
-              >
-                {loadingSize ? (
-                  <ActivityIndicator size="small" color={theme.colors.secondary} />
-                ) : (
-                  <Image
-                    source={{ uri: imageUri }}
-                    style={{
-                      width: displayedWidth,
-                      height: displayedHeight,
-                      transform: [
-                        { translateX: translate.x },
-                        { translateY: translate.y },
-                      ],
-                    }}
-                    resizeMode="cover"
-                  />
-                )}
               </View>
+
+              <View style={styles.stage}>
+                <View
+                  style={[
+                    styles.cropFrame,
+                    {
+                      width: frameLayout.width,
+                      height: frameLayout.height,
+                    },
+                  ]}
+                  {...panResponder.panHandlers}
+                >
+                  {loadingSize ? (
+                    <ActivityIndicator size="small" color={theme.colors.secondary} />
+                  ) : (
+                    <Image
+                      source={{ uri: imageUri }}
+                      style={{
+                        width: displayedWidth,
+                        height: displayedHeight,
+                        transform: [
+                          { translateX: translate.x },
+                          { translateY: translate.y },
+                        ],
+                      }}
+                      resizeMode="cover"
+                    />
+                  )}
+                </View>
+              </View>
+
+              <ZoomSlider value={zoom} onChange={handleChangeZoom} theme={theme} />
+            </ScrollView>
+          </View>
+
+          <View
+            style={[
+              styles.actionBar,
+              isWeb && styles.actionBarWeb,
+              isWeb &&
+                (useFixedActionBar ? styles.actionBarWebFixed : styles.actionBarWebSticky),
+            ]}
+          >
+            <View style={[styles.actionsRow, isWeb ? styles.actionsRowWeb : styles.actionsRowMobile]}>
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  styles.actionButton,
+                  isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
+                  processing && styles.buttonDisabled,
+                ]}
+                onPress={handleCancel}
+                disabled={processing}
+              >
+                <Text style={styles.secondaryButtonText}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  styles.actionButton,
+                  isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
+                  processing && styles.buttonDisabled,
+                ]}
+                onPress={handleConfirm}
+                disabled={processing || loadingSize}
+              >
+                {processing ? (
+                  <ActivityIndicator size="small" color={theme.colors.card} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Conferma</Text>
+                )}
+              </TouchableOpacity>
             </View>
-
-            <ZoomSlider value={zoom} onChange={handleChangeZoom} theme={theme} />
-          </ScrollView>
-        </View>
-
-        <View
-          style={[
-            styles.actionBar,
-            isWeb && styles.actionBarWeb,
-            isWeb && (useFixedActionBar ? styles.actionBarWebFixed : styles.actionBarWebSticky),
-          ]}
-        >
-          <View style={[styles.actionsRow, isWeb ? styles.actionsRowWeb : styles.actionsRowMobile]}>
-            <TouchableOpacity
-              style={[
-                styles.secondaryButton,
-                styles.actionButton,
-                isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
-                processing && styles.buttonDisabled,
-              ]}
-              onPress={handleCancel}
-              disabled={processing}
-            >
-              <Text style={styles.secondaryButtonText}>Annulla</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                styles.actionButton,
-                isWeb ? styles.actionButtonWeb : styles.actionButtonMobile,
-                processing && styles.buttonDisabled,
-              ]}
-              onPress={handleConfirm}
-              disabled={processing || loadingSize}
-            >
-              {processing ? (
-                <ActivityIndicator size="small" color={theme.colors.card} />
-              ) : (
-                <Text style={styles.primaryButtonText}>Conferma</Text>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+
+      <Modal
+        visible={isMoreSheetVisible}
+        transparent
+        animationType="none"
+        onRequestClose={closeMoreSheet}
+      >
+        <View style={styles.sheetModalRoot}>
+          <Pressable style={styles.sheetOverlay} onPress={closeMoreSheet} />
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              {
+                transform: [{ translateY: sheetTranslateY }],
+              },
+            ]}
+            {...(!isWeb ? sheetPanResponder.panHandlers : {})}
+          >
+            {!isWeb ? <View style={styles.sheetHandle} /> : null}
+            <Text style={styles.sheetTitle}>Altri formati</Text>
+            <Text style={styles.sheetSubtitle}>Scegli il formato migliore per il tuo contenuto.</Text>
+            <View style={styles.sheetList}>
+              {extraRatios.map((option) => {
+                const isSelected = ratioKey === option.key;
+                const isRecommended = recommendedRatioKey === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.sheetItem,
+                      isSelected && styles.sheetItemSelected,
+                    ]}
+                    onPress={() => handleSelectExtraRatio(option.key)}
+                    disabled={processing}
+                  >
+                    <View style={styles.sheetItemHeader}>
+                      <Text
+                        style={[
+                          styles.sheetItemLabel,
+                          isSelected && styles.sheetItemLabelSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      {isRecommended ? (
+                        <View style={styles.sheetRecommendedBadge}>
+                          <Text style={styles.sheetRecommendedBadgeText}>Consigliato</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.sheetItemDescription,
+                        isSelected && styles.sheetItemDescriptionSelected,
+                      ]}
+                    >
+                      {option.description}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+    </>
   );
 };
 
@@ -549,16 +814,40 @@ const createStyles = (theme) =>
       borderWidth: 1,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.card,
+      minHeight: 40,
+      justifyContent: 'center',
     },
     ratioButtonActive: {
       backgroundColor: theme.colors.secondary,
       borderColor: theme.colors.secondary,
+    },
+    ratioButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.xs,
     },
     ratioButtonText: {
       color: theme.colors.text,
       fontWeight: '700',
     },
     ratioButtonTextActive: {
+      color: theme.colors.card,
+    },
+    recommendedBadge: {
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      backgroundColor: theme.colors.surfaceMuted,
+    },
+    recommendedBadgeActive: {
+      backgroundColor: 'rgba(255,255,255,0.26)',
+    },
+    recommendedBadgeText: {
+      color: theme.colors.text,
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    recommendedBadgeTextActive: {
       color: theme.colors.card,
     },
     stage: {
@@ -687,6 +976,99 @@ const createStyles = (theme) =>
     },
     buttonDisabled: {
       opacity: 0.65,
+    },
+    sheetModalRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    sheetOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    bottomSheet: {
+      position: 'absolute',
+      bottom: 0,
+      width: '100%',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: 16,
+      paddingBottom: 24,
+      backgroundColor: '#ffffff',
+      gap: theme.spacing.sm,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: -8 },
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      elevation: 20,
+    },
+    sheetHandle: {
+      width: 44,
+      height: 5,
+      borderRadius: 999,
+      backgroundColor: '#d7d7db',
+      alignSelf: 'center',
+      marginBottom: 8,
+    },
+    sheetTitle: {
+      fontSize: 19,
+      fontWeight: '800',
+      color: '#15161a',
+    },
+    sheetSubtitle: {
+      fontSize: 13,
+      color: '#6f7382',
+      marginTop: -2,
+      marginBottom: 4,
+    },
+    sheetList: {
+      gap: 10,
+      paddingBottom: 8,
+    },
+    sheetItem: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: '#e8e9ef',
+      backgroundColor: '#f7f8fc',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 4,
+    },
+    sheetItemSelected: {
+      borderColor: theme.colors.secondary,
+      backgroundColor: 'rgba(38,113,255,0.10)',
+    },
+    sheetItemHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    sheetItemLabel: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: '#16181d',
+    },
+    sheetItemLabelSelected: {
+      color: theme.colors.secondary,
+    },
+    sheetItemDescription: {
+      fontSize: 13,
+      color: '#6f7382',
+    },
+    sheetItemDescriptionSelected: {
+      color: '#2f4f9f',
+      fontWeight: '600',
+    },
+    sheetRecommendedBadge: {
+      borderRadius: 999,
+      backgroundColor: '#e9ecf7',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    sheetRecommendedBadgeText: {
+      fontSize: 11,
+      color: '#3f4f82',
+      fontWeight: '700',
     },
     centerState: {
       flex: 1,
