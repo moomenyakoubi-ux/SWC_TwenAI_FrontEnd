@@ -408,9 +408,22 @@ const normalizePostPayload = (rawPost) => {
     rawPost.post_media ||
     rawPost.media ||
     rawPost.attachments;
-  const mediaItems = Array.isArray(rawMediaItems)
-    ? rawMediaItems.map(normalizeMediaItem).filter(Boolean)
-    : [];
+  const normalizeRawMediaToArray = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'object') return [raw];
+    if (typeof raw === 'string') return [{ publicUrl: raw, mediaType: 'image' }];
+    return [];
+  };
+  const mediaArray = normalizeRawMediaToArray(rawMediaItems);
+  const mediaItems = mediaArray.map(normalizeMediaItem).filter(Boolean);
+  if (__DEV__ && rawMediaItems && mediaItems.length === 0) {
+    console.warn('[MEDIA_SHAPE_NOT_ARRAY]', {
+      postId,
+      rawMediaType: typeof rawMediaItems,
+      rawMediaItems,
+    });
+  }
   const imageBucket = asNullableString(
     rawPost.image_bucket ||
       rawPost.imageBucket ||
@@ -437,6 +450,13 @@ const normalizePostPayload = (rawPost) => {
   let image = imageFromPayload || imageFromMedia;
   if (!image && imageBucket && imagePath) {
     image = resolveStoragePublicUrl(imageBucket, imagePath);
+  }
+  const pm = rawPost.post_media;
+  if ((!image || !String(image).length) && mediaItems.length === 0 && pm && typeof pm === 'object' && !Array.isArray(pm)) {
+    const b = pm.bucket || pm.bucket_id || pm.bucket_name;
+    const p = pm.path || pm.file_path || pm.object_path || pm.storage_path;
+    const url = resolveStoragePublicUrl(b, p);
+    if (url) image = url;
   }
   const likesCount = toNumber(rawPost.likes_count ?? rawPost.likesCount ?? rawPost.likes?.length) ?? rawLikes.length;
   const commentsCount =
@@ -634,8 +654,8 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
   }
 
   if (FEED_DEBUG_ENABLED) {
-    console.log('[FEED_DEBUG_HOME_FIRST_POST]', items?.[0]);
-    console.log('[FEED_DEBUG_HOME_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+    console.log('[FEED_FIRST_MEDIA_FINAL]', items?.[0]?.mediaItems?.[0]);
+    console.log('[FEED_FIRST_IMAGE_FINAL]', items?.[0]?.image);
   }
 
   const responseLimit = toNumber(payload?.limit) ?? limit;
@@ -756,8 +776,8 @@ export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0
     .map((post) => ({ kind: 'post', ...post }));
 
   if (FEED_DEBUG_ENABLED) {
-    console.log('[FEED_DEBUG_PUBLIC_PROFILE_FIRST_POST]', items?.[0]);
-    console.log('[FEED_DEBUG_PUBLIC_PROFILE_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+    console.log('[FEED_FIRST_MEDIA_FINAL]', items?.[0]?.mediaItems?.[0]);
+    console.log('[FEED_FIRST_IMAGE_FINAL]', items?.[0]?.image);
   }
 
   return {
