@@ -2,23 +2,9 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
 import ResponsiveMedia from './ResponsiveMedia';
+import { parseAspectRatio } from '../utils/parseAspectRatio';
 
 const DEFAULT_CONTENT_ASPECT_RATIO = 4 / 5;
-
-const toFiniteNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-};
-
-const isDebugMedia = () => {
-  if (typeof window === 'undefined') return false;
-  try {
-    return new URLSearchParams(window.location.search).get('debug_media') === '1';
-  } catch (_error) {
-    return false;
-  }
-};
-const DEBUG_MEDIA = isDebugMedia();
 
 const getMediaUrl = (media) =>
   media?.publicUrl ||
@@ -29,39 +15,31 @@ const getMediaUrl = (media) =>
   null;
 
 const getBestMedia = (item) => {
-  const firstMedia = Array.isArray(item?.mediaItems) && item.mediaItems.length > 0
-    ? item.mediaItems[0]
-    : null;
+  const firstMedia = Array.isArray(item?.mediaItems) ? item.mediaItems[0] : null;
 
   const sourceUri = firstMedia
     ? getMediaUrl(firstMedia)
     : item?.publicUrl || item?.image_url || item?.image || null;
 
-  const width = toFiniteNumber(firstMedia?.width) || toFiniteNumber(item?.width);
-  const height = toFiniteNumber(firstMedia?.height) || toFiniteNumber(item?.height);
+  const arFromMedia =
+    parseAspectRatio(firstMedia?.aspectRatio) ||
+    parseAspectRatio(firstMedia?.aspect_ratio);
+  const arFromRatioKey =
+    parseAspectRatio(firstMedia?.ratio_key) ||
+    parseAspectRatio(firstMedia?.ratioKey);
+  const arFromRoot =
+    parseAspectRatio(item?.aspectRatio) ||
+    parseAspectRatio(item?.aspect_ratio);
+  const w = Number(firstMedia?.width ?? item?.width);
+  const h = Number(firstMedia?.height ?? item?.height);
+  const arFromWH =
+    Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? w / h : null;
 
-  const aspectRatio =
-    toFiniteNumber(firstMedia?.aspectRatio) ||
-    toFiniteNumber(firstMedia?.aspect_ratio) ||
-    toFiniteNumber(item?.aspect_ratio) ||
-    toFiniteNumber(item?.mediaAspectRatio) ||
-    (width && height ? width / height : null) ||
-    DEFAULT_CONTENT_ASPECT_RATIO;
-  const debugInfo = DEBUG_MEDIA
-    ? {
-        id: item?.type_id || item?.id,
-        ratio_key: firstMedia?.ratio_key ?? firstMedia?.ratioKey ?? null,
-        raw_media_ar: firstMedia?.aspectRatio ?? firstMedia?.aspect_ratio ?? null,
-        raw_w: firstMedia?.width ?? null,
-        raw_h: firstMedia?.height ?? null,
-        used_ar: aspectRatio,
-      }
-    : null;
+  const aspectRatio = arFromMedia || arFromRatioKey || arFromRoot || arFromWH || DEFAULT_CONTENT_ASPECT_RATIO;
 
   return {
     sourceUri,
     aspectRatio,
-    debugInfo,
   };
 };
 
@@ -79,7 +57,7 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole }) => {
   const badgeLabel = isEvent ? 'Evento' : 'Notizia';
   const preview = item?.excerpt || item?.content || '';
   const eventMeta = isEvent ? [item?.location, formatStartsAt(item?.starts_at)].filter(Boolean).join(' • ') : '';
-  const { sourceUri, aspectRatio, debugInfo } = useMemo(() => getBestMedia(item), [item]);
+  const { sourceUri, aspectRatio } = useMemo(() => getBestMedia(item), [item]);
 
   return (
     <Pressable
@@ -92,7 +70,6 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole }) => {
         <ResponsiveMedia
           uri={sourceUri}
           aspectRatio={aspectRatio}
-          debugInfo={debugInfo}
         />
       ) : null}
       <View style={styles.content}>

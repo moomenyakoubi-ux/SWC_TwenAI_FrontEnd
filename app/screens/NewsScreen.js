@@ -18,25 +18,11 @@ import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import ResponsiveMedia from '../components/ResponsiveMedia';
 import useSession from '../auth/useSession';
 import { fetchEventsNews } from '../services/contentApi';
+import { parseAspectRatio } from '../utils/parseAspectRatio';
 
 const backgroundImage = require('../images/image1.png');
 const PAGE_SIZE = 10;
 const DEFAULT_CONTENT_ASPECT_RATIO = 4 / 5;
-
-const toFiniteNumber = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-};
-
-const isDebugMedia = () => {
-  if (typeof window === 'undefined') return false;
-  try {
-    return new URLSearchParams(window.location.search).get('debug_media') === '1';
-  } catch (_error) {
-    return false;
-  }
-};
-const DEBUG_MEDIA = isDebugMedia();
 
 const getMediaUrl = (media) =>
   media?.publicUrl ||
@@ -47,36 +33,29 @@ const getMediaUrl = (media) =>
   null;
 
 const getBestMedia = (item) => {
-  const firstMedia = Array.isArray(item?.mediaItems) && item.mediaItems.length > 0
-    ? item.mediaItems[0]
-    : null;
+  const firstMedia = Array.isArray(item?.mediaItems) ? item.mediaItems[0] : null;
 
   const sourceUri = firstMedia
     ? getMediaUrl(firstMedia)
     : item?.publicUrl || item?.image_url || item?.image || null;
 
-  const width = toFiniteNumber(firstMedia?.width) || toFiniteNumber(item?.width);
-  const height = toFiniteNumber(firstMedia?.height) || toFiniteNumber(item?.height);
+  const arFromMedia =
+    parseAspectRatio(firstMedia?.aspectRatio) ||
+    parseAspectRatio(firstMedia?.aspect_ratio);
+  const arFromRatioKey =
+    parseAspectRatio(firstMedia?.ratio_key) ||
+    parseAspectRatio(firstMedia?.ratioKey);
+  const arFromRoot =
+    parseAspectRatio(item?.aspectRatio) ||
+    parseAspectRatio(item?.aspect_ratio);
+  const w = Number(firstMedia?.width ?? item?.width);
+  const h = Number(firstMedia?.height ?? item?.height);
+  const arFromWH =
+    Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? w / h : null;
 
-  const aspectRatio =
-    toFiniteNumber(firstMedia?.aspectRatio) ||
-    toFiniteNumber(firstMedia?.aspect_ratio) ||
-    toFiniteNumber(item?.aspect_ratio) ||
-    toFiniteNumber(item?.mediaAspectRatio) ||
-    (width && height ? width / height : null) ||
-    DEFAULT_CONTENT_ASPECT_RATIO;
-  const debugInfo = DEBUG_MEDIA
-    ? {
-        id: item?.type_id || item?.id,
-        ratio_key: firstMedia?.ratio_key ?? firstMedia?.ratioKey ?? null,
-        raw_media_ar: firstMedia?.aspectRatio ?? firstMedia?.aspect_ratio ?? null,
-        raw_w: firstMedia?.width ?? null,
-        raw_h: firstMedia?.height ?? null,
-        used_ar: aspectRatio,
-      }
-    : null;
+  const aspectRatio = arFromMedia || arFromRatioKey || arFromRoot || arFromWH || DEFAULT_CONTENT_ASPECT_RATIO;
 
-  return { sourceUri, aspectRatio, debugInfo };
+  return { sourceUri, aspectRatio };
 };
 
 const dedupeById = (items) => {
@@ -219,7 +198,7 @@ const NewsScreen = ({ navigation }) => {
         ? [item.location, formatStartAt(item.starts_at)].filter(Boolean).join(' • ')
         : null;
       const badgeLabel = isEvent ? newsStrings.eventsSection : newsStrings.newsSection;
-      const { sourceUri, aspectRatio, debugInfo } = getBestMedia(item);
+      const { sourceUri, aspectRatio } = getBestMedia(item);
 
       return (
         <View style={styles.newsCard}>
@@ -227,7 +206,6 @@ const NewsScreen = ({ navigation }) => {
             <ResponsiveMedia
               uri={sourceUri}
               aspectRatio={aspectRatio}
-              debugInfo={debugInfo}
             />
           ) : null}
           <View style={styles.cardContent}>

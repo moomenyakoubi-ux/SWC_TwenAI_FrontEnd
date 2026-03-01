@@ -30,9 +30,6 @@ import { fetchHomeFeed } from '../services/contentApi';
 const backgroundImage = require('../images/image1.png');
 const HOME_PAGE_SIZE = 20;
 const EVENT_NEWS_DETAIL_ROUTES = ['EventNewsDetail', 'NewsDetail', 'EventDetail'];
-const SYNTHETIC_HOME_ID_PATTERN = /^(post|official|sponsored|event[-_]news)-\d+$/i;
-const SEED_CONTENT_PATTERN = /\b(mock|seed|demo|fake)\b/i;
-
 const resolveFeedItemType = (item) => {
   const rawType = String(item?.type || '').trim().toLowerCase();
   if (rawType) return rawType;
@@ -173,34 +170,6 @@ const HomeScreen = ({ navigation }) => {
         const nextOffsetValue =
           typeof response?.nextOffset === 'number' ? response.nextOffset : nextOffset + HOME_PAGE_SIZE;
 
-        if (__DEV__) {
-          const counts = incoming.reduce(
-            (acc, current) => {
-              const key = current?.kind || 'unknown';
-              acc[key] = (acc[key] || 0) + 1;
-              return acc;
-            },
-            {},
-          );
-          const fakeIds = incoming
-            .filter((entry) => SYNTHETIC_HOME_ID_PATTERN.test(String(entry?.id || '')))
-            .map((entry) => `${entry?.kind || 'unknown'}:${entry?.id}`);
-          const seedLikeItems = incoming
-            .filter((entry) => {
-              const text = [entry?.title, entry?.excerpt, entry?.content, entry?.body].filter(Boolean).join(' ');
-              return SEED_CONTENT_PATTERN.test(text);
-            })
-            .map((entry) => `${entry?.kind || 'unknown'}:${entry?.id}`);
-
-          console.log('[home-feed] kind counts', counts, 'items', incoming.length);
-          if (fakeIds.length > 0) {
-            console.warn('[home-feed] synthetic ids detected', fakeIds.slice(0, 10));
-          }
-          if (seedLikeItems.length > 0) {
-            console.warn('[home-feed] seed-like content detected', seedLikeItems.slice(0, 10));
-          }
-        }
-
         setHomeFeedError(null);
         hasMoreFeedRef.current = nextHasMore;
         feedOffsetRef.current = nextOffsetValue;
@@ -255,13 +224,6 @@ const HomeScreen = ({ navigation }) => {
 
   const keyExtractor = useCallback((item) => buildFeedItemKey(item), []);
 
-  useEffect(() => {
-    if (!__DEV__ || !homeFeedItems.length) return;
-    console.log('[HOME_RENDER_FIRST_ITEM]', homeFeedItems[0]);
-    console.log('[HOME_RENDER_FIRST_MEDIA]', homeFeedItems[0]?.mediaItems?.[0]);
-    console.log('[HOME_KEYS_SAMPLE]', homeFeedItems.slice(0, 10).map((i) => `${resolveFeedItemType(i)}_${String(i?.id ?? '')}`));
-  }, [homeFeedItems]);
-
   const openEventNewsItem = useCallback(
     (item) => {
       const targetUrl = String(item?.external_url || '').trim();
@@ -288,14 +250,6 @@ const HomeScreen = ({ navigation }) => {
         normalizedKind === 'news' ||
         type === 'event' ||
         type === 'news';
-
-      if (__DEV__) {
-        console.log('[HOME_KIND_DEBUG]', {
-          id: item?.id,
-          kind: item?.kind,
-          type,
-        });
-      }
 
       if (isEventNews) {
         const hasExternalUrl = Boolean(String(item?.external_url || '').trim());
