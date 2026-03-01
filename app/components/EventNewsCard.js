@@ -33,12 +33,14 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole, eventBadgeLabe
       style={({ pressed }) => [styles.card, pressed && onPress && styles.pressed]}
     >
       {sourceUri ? (
-        <ResponsiveMedia
-          uri={sourceUri}
-          aspectRatio={aspectRatio}
-        />
+        <View style={styles.mediaSection}>
+          <ResponsiveMedia
+            uri={sourceUri}
+            aspectRatio={aspectRatio}
+          />
+        </View>
       ) : null}
-      <View style={styles.content}>
+      <View style={styles.textSection}>
         <View style={styles.badgeRow}>
           <Text style={[styles.badge, isEvent ? styles.eventBadge : styles.newsBadge]}>{badgeLabel}</Text>
         </View>
@@ -53,6 +55,7 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole, eventBadgeLabe
 const createStyles = (theme) =>
   StyleSheet.create({
     card: {
+      width: '100%',
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.lg,
       marginBottom: theme.spacing.md,
@@ -64,7 +67,11 @@ const createStyles = (theme) =>
     pressed: {
       opacity: 0.92,
     },
-    content: {
+    mediaSection: {
+      width: '100%',
+      alignItems: 'center',
+    },
+    textSection: {
       padding: theme.spacing.md,
       gap: theme.spacing.xs,
     },

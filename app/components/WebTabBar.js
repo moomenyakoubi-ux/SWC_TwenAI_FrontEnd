@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
 
 const COLLAPSED_TAB_BAR_WIDTH = 88;
@@ -14,7 +14,6 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   const { theme: appTheme } = useAppTheme();
   const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [hoveredRouteKey, setHoveredRouteKey] = useState(null);
   const widthAnim = useRef(new Animated.Value(COLLAPSED_TAB_BAR_WIDTH)).current;
   const labelOpacity = useRef(new Animated.Value(0)).current;
 
@@ -49,10 +48,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
     <Animated.View
       style={[styles.container, { width: widthAnim }]}
       onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => {
-        setIsExpanded(false);
-        setHoveredRouteKey(null);
-      }}
+      onMouseLeave={() => setIsExpanded(false)}
     >
       {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
@@ -72,7 +68,6 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
         const labelText = typeof label === 'string' ? label : route.name;
 
         const isFocused = state.index === index;
-        const isHovered = hoveredRouteKey === route.key;
         const onPress = () => {
           const event = navigation.emit({
             type: 'tabPress',
@@ -85,52 +80,59 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
           }
         };
 
-        const icon =
-          typeof options.tabBarIcon === 'function'
-            ? options.tabBarIcon({
-                focused: isFocused,
-                size: 22,
-                color: isFocused
-                  ? appTheme.colors.card
-                  : isHovered
-                    ? appTheme.colors.primary
-                    : appTheme.colors.secondary,
-              })
-            : null;
-
         return (
-          <TouchableOpacity
+          <Pressable
             key={route.key}
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             testID={options.tabBarTestID}
             onPress={onPress}
-            onMouseEnter={() => setHoveredRouteKey(route.key)}
-            onMouseLeave={() => setHoveredRouteKey((current) => (current === route.key ? null : current))}
-            style={[
+            style={({ hovered, pressed }) => [
               styles.item,
+              styles.itemWeb,
               isExpanded ? styles.itemExpanded : styles.itemCollapsed,
               isFocused && styles.itemActive,
-              !isFocused && isHovered && styles.itemHovered,
+              !isFocused && hovered && styles.itemHovered,
+              !isFocused && hovered && styles.itemHoveredTransform,
+              pressed && styles.itemPressed,
             ]}
           >
-            {icon}
-            <Animated.View
-              style={[styles.labelWrap, { width: labelWidth, marginLeft: labelGap, opacity: labelOpacity }]}
-            >
-              <Text
-                style={[
-                  styles.label,
-                  isFocused && styles.labelActive,
-                  !isFocused && isHovered && styles.labelHovered,
-                ]}
-                numberOfLines={1}
-              >
-                {labelText}
-              </Text>
-            </Animated.View>
-          </TouchableOpacity>
+            {({ hovered }) => {
+              const icon =
+                typeof options.tabBarIcon === 'function'
+                  ? options.tabBarIcon({
+                      focused: isFocused,
+                      size: 22,
+                      color: isFocused
+                        ? appTheme.colors.card
+                        : hovered
+                          ? appTheme.colors.primary
+                          : appTheme.colors.secondary,
+                    })
+                  : null;
+
+              return (
+                <>
+                  {icon}
+                  <Animated.View
+                    style={[styles.labelWrap, { width: labelWidth, marginLeft: labelGap, opacity: labelOpacity }]}
+                  >
+                    <Text
+                      style={[
+                        styles.label,
+                        isFocused && styles.labelActive,
+                        !isFocused && hovered && styles.labelHovered,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {labelText}
+                    </Text>
+                  </Animated.View>
+                </>
+              );
+            }}
+          </Pressable>
         );
       })}
     </Animated.View>
@@ -164,6 +166,13 @@ const createStyles = (appTheme) =>
       alignItems: 'center',
       minHeight: 52,
     },
+    itemWeb: {
+      transitionProperty: 'background-color, transform, opacity',
+      transitionDuration: '200ms',
+      transitionTimingFunction: 'ease-out',
+      transform: [{ scale: 1 }],
+      opacity: 1,
+    },
     itemCollapsed: {
       justifyContent: 'center',
     },
@@ -175,6 +184,13 @@ const createStyles = (appTheme) =>
     },
     itemHovered: {
       backgroundColor: 'rgba(231, 0, 19, 0.10)',
+    },
+    itemHoveredTransform: {
+      transform: [{ scale: 1.03 }],
+    },
+    itemPressed: {
+      transform: [{ scale: 0.98 }],
+      opacity: 0.92,
     },
     labelWrap: {
       overflow: 'hidden',
