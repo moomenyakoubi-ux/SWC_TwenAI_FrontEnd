@@ -390,6 +390,10 @@ const normalizeMediaItem = (media) => {
     path,
     width: toNumber(media.width),
     height: toNumber(media.height),
+    aspectRatio: toNumber(media.aspectRatio ?? media.aspect_ratio),
+    aspect_ratio: toNumber(media.aspectRatio ?? media.aspect_ratio),
+    ratioKey: asNullableString(media.ratioKey ?? media.ratio_key),
+    ratio_key: asNullableString(media.ratioKey ?? media.ratio_key),
   };
 };
 
@@ -403,10 +407,10 @@ const normalizePostPayload = (rawPost) => {
   const rawComments = Array.isArray(rawPost.comments)
     ? rawPost.comments.map(normalizeComment).filter(Boolean)
     : [];
-  const rawMediaItems = rawPost.mediaItems ||
-    rawPost.media_items ||
-    rawPost.post_media ||
-    rawPost.media ||
+  const rawMediaItems = rawPost.mediaItems ??
+    rawPost.media_items ??
+    rawPost.post_media ??
+    rawPost.media ??
     rawPost.attachments;
   const normalizeRawMediaToArray = (raw) => {
     if (!raw) return [];
