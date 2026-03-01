@@ -2,8 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { Image, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 const DEFAULT_ASPECT_RATIO = 16 / 9;
-const WEB_MAX_MEDIA_HEIGHT_PX = 560;
+const WEB_CARD_MAX_WIDTH_PX = 880;
+const WEB_DEFAULT_TARGET_MAX_MEDIA_WIDTH_PX = 700;
+const WEB_PORTRAIT_TARGET_MAX_MEDIA_WIDTH_PX = 760;
+const WEB_DEFAULT_MAX_MEDIA_HEIGHT_PX = 560;
+const WEB_PORTRAIT_MAX_MEDIA_HEIGHT_PX = 640;
 const WEB_MAX_MEDIA_VH = 0.6;
+const WEB_MEDIA_VIEWPORT_SHARE = 0.72;
+const PORTRAIT_ASPECT_RATIO_THRESHOLD = 0.9;
 
 const toFinitePositiveNumber = (value) => {
   const parsed = Number(value);
@@ -11,7 +17,7 @@ const toFinitePositiveNumber = (value) => {
 };
 
 const ResponsiveMedia = ({ uri, aspectRatio, borderRadius = 0 }) => {
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [containerWidth, setContainerWidth] = useState(0);
   const isWeb = Platform.OS === 'web';
 
@@ -27,24 +33,34 @@ const ResponsiveMedia = ({ uri, aspectRatio, borderRadius = 0 }) => {
       };
     }
 
+    const safeWindowWidth = Math.max(320, Number(windowWidth) || 320);
     const safeWindowHeight = Math.max(320, Number(windowHeight) || 320);
-    const maxHeight = Math.min(WEB_MAX_MEDIA_HEIGHT_PX, safeWindowHeight * WEB_MAX_MEDIA_VH);
+    const isPortrait = safeAspectRatio < PORTRAIT_ASPECT_RATIO_THRESHOLD;
+    const targetMaxMediaWidth = isPortrait
+      ? WEB_PORTRAIT_TARGET_MAX_MEDIA_WIDTH_PX
+      : WEB_DEFAULT_TARGET_MAX_MEDIA_WIDTH_PX;
+    const maxHeightLimit = isPortrait
+      ? WEB_PORTRAIT_MAX_MEDIA_HEIGHT_PX
+      : WEB_DEFAULT_MAX_MEDIA_HEIGHT_PX;
+    const maxHeight = Math.min(maxHeightLimit, safeWindowHeight * WEB_MAX_MEDIA_VH);
 
-    if (containerWidth <= 0) {
-      return {
-        computedHeight: null,
-        maxHeight,
-        finalWidth: null,
-        finalHeight: maxHeight,
-      };
-    }
+    const availableWidth = containerWidth > 0
+      ? containerWidth
+      : Math.min(WEB_CARD_MAX_WIDTH_PX, safeWindowWidth * WEB_MEDIA_VIEWPORT_SHARE);
+    const desiredWidth = Math.min(
+      targetMaxMediaWidth,
+      safeWindowWidth * WEB_MEDIA_VIEWPORT_SHARE,
+      WEB_CARD_MAX_WIDTH_PX,
+      availableWidth,
+    );
+    const computedHeight = desiredWidth / safeAspectRatio;
 
-    const computedHeight = containerWidth / safeAspectRatio;
     const shouldClampHeight = computedHeight > maxHeight;
     const finalHeight = shouldClampHeight ? maxHeight : computedHeight;
-    const finalWidth = shouldClampHeight
-      ? Math.min(containerWidth, Math.max(1, Math.floor(maxHeight * safeAspectRatio)))
-      : containerWidth;
+    const unclampedFinalWidth = shouldClampHeight
+      ? Math.floor(maxHeight * safeAspectRatio)
+      : desiredWidth;
+    const finalWidth = Math.max(1, Math.min(desiredWidth, unclampedFinalWidth));
 
     return {
       computedHeight,
@@ -52,7 +68,7 @@ const ResponsiveMedia = ({ uri, aspectRatio, borderRadius = 0 }) => {
       finalWidth,
       finalHeight,
     };
-  }, [containerWidth, isWeb, safeAspectRatio, windowHeight]);
+  }, [containerWidth, isWeb, safeAspectRatio, windowHeight, windowWidth]);
 
   const wrapperStyle = useMemo(() => {
     if (!isWeb) {

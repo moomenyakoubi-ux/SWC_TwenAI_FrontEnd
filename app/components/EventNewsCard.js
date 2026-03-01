@@ -1,18 +1,10 @@
 import React, { useMemo } from 'react';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
 import ResponsiveMedia from './ResponsiveMedia';
 import { getBestMediaInfo } from '../utils/media';
 
 const DEFAULT_CONTENT_ASPECT_RATIO = 4 / 5;
-const WEB_CARD_MIN_WIDTH = 440;
-const WEB_CARD_MAX_WIDTH = 860;
-const WEB_TARGET_MAX_MEDIA_WIDTH = 700;
-const WEB_TARGET_MEDIA_VIEWPORT_SHARE = 0.5;
-const WEB_MAX_MEDIA_HEIGHT_PX = 560;
-const WEB_MAX_MEDIA_VH = 0.6;
-
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const formatStartsAt = (value) => {
   if (!value) return null;
@@ -23,7 +15,6 @@ const formatStartsAt = (value) => {
 
 const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole, eventBadgeLabel, newsBadgeLabel }) => {
   const isWeb = Platform.OS === 'web';
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const isEvent = item?.type === 'event';
@@ -34,60 +25,20 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole, eventBadgeLabe
     () => getBestMediaInfo(item, DEFAULT_CONTENT_ASPECT_RATIO),
     [item],
   );
-  const webSizing = useMemo(() => {
-    if (!isWeb) return null;
-
-    const safeAspectRatio = Number(aspectRatio) > 0 ? Number(aspectRatio) : DEFAULT_CONTENT_ASPECT_RATIO;
-    const safeWindowWidth = Math.max(320, Number(windowWidth) || 320);
-    const safeWindowHeight = Math.max(320, Number(windowHeight) || 320);
-    const maxHeight = Math.min(WEB_MAX_MEDIA_HEIGHT_PX, safeWindowHeight * WEB_MAX_MEDIA_VH);
-    const desiredMediaWidth = Math.min(WEB_TARGET_MAX_MEDIA_WIDTH, safeWindowWidth * WEB_TARGET_MEDIA_VIEWPORT_SHARE);
-    const desiredMediaHeight = desiredMediaWidth / safeAspectRatio;
-    const unclampedMediaWidth = desiredMediaHeight > maxHeight
-      ? Math.max(1, Math.floor(maxHeight * safeAspectRatio))
-      : Math.max(1, Math.floor(desiredMediaWidth));
-
-    const maxCardWidth = Math.min(WEB_CARD_MAX_WIDTH, Math.max(280, safeWindowWidth - 48));
-    const minCardWidth = Math.min(WEB_CARD_MIN_WIDTH, maxCardWidth);
-    const cardWidth = clamp(unclampedMediaWidth, minCardWidth, maxCardWidth);
-    const mediaWidth = Math.min(unclampedMediaWidth, cardWidth);
-
-    return {
-      cardWidth,
-      minCardWidth,
-      maxCardWidth,
-      mediaWidth,
-    };
-  }, [aspectRatio, isWeb, windowHeight, windowWidth]);
 
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? accessibilityRole || 'button' : undefined}
-      style={({ pressed }) => [
-        styles.cardBase,
-        isWeb
-          ? [
-              styles.cardWeb,
-              {
-                width: webSizing?.cardWidth,
-                minWidth: webSizing?.minCardWidth,
-                maxWidth: webSizing?.maxCardWidth,
-              },
-            ]
-          : styles.cardMobile,
-        pressed && onPress && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.card, isWeb && styles.webCard, pressed && onPress && styles.pressed]}
     >
       {sourceUri ? (
         <View style={styles.mediaSection}>
-          <View style={[styles.mediaInner, isWeb && webSizing ? { width: webSizing.mediaWidth } : null]}>
-            <ResponsiveMedia
-              uri={sourceUri}
-              aspectRatio={aspectRatio}
-            />
-          </View>
+          <ResponsiveMedia
+            uri={sourceUri}
+            aspectRatio={aspectRatio}
+          />
         </View>
       ) : null}
       <View style={styles.textSection}>
@@ -104,7 +55,8 @@ const EventNewsCard = ({ item, isRTL, onPress, accessibilityRole, eventBadgeLabe
 
 const createStyles = (theme) =>
   StyleSheet.create({
-    cardBase: {
+    card: {
+      width: '100%',
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.lg,
       marginBottom: theme.spacing.md,
@@ -113,12 +65,10 @@ const createStyles = (theme) =>
       overflow: 'hidden',
       ...theme.shadow.card,
     },
-    cardWeb: {
-      alignSelf: 'center',
-      maxWidth: '100%',
-    },
-    cardMobile: {
+    webCard: {
       width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
     },
     pressed: {
       opacity: 0.92,
@@ -126,9 +76,6 @@ const createStyles = (theme) =>
     mediaSection: {
       width: '100%',
       alignItems: 'center',
-    },
-    mediaInner: {
-      width: '100%',
     },
     textSection: {
       padding: theme.spacing.md,
