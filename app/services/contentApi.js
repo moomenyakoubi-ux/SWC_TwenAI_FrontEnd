@@ -352,25 +352,31 @@ const normalizeLikeUser = (like, index) => {
 
 const normalizeMediaItem = (media) => {
   if (!media) return null;
-  const bucket = asNullableString(media.bucket || media.bucket_id || media.bucketId || media.storageBucket);
+  const bucket = asNullableString(
+    media.bucket ||
+      media.bucket_id ||
+      media.bucketId ||
+      media.storage_bucket ||
+      media.storageBucket,
+  );
   const path = asNullableString(media.path || media.name || media.storage_path || media.storagePath);
-  const existingUrl = asNullableString(media.publicUrl || media.public_url || media.url || media.image_url);
-  const resolvedUrl = existingUrl || resolveStoragePublicUrl(bucket, path);
+  const providedUrl = asNullableString(media.publicUrl || media.public_url || media.url || media.image_url);
+  const publicUrl = providedUrl || resolveStoragePublicUrl(bucket, path);
   const rawType = asString(media.mediaType || media.media_type || media.type || 'image').toLowerCase();
-  const normalizedType =
+  const mediaType =
     rawType === 'image' || rawType.startsWith('image/')
       ? 'image'
       : rawType === 'video' || rawType.startsWith('video/')
         ? 'video'
         : rawType;
 
-  if (!resolvedUrl && bucket && path) {
+  if (!publicUrl && bucket && path) {
     console.warn('[MEDIA_URL_MISSING]', { bucket, path, media });
   }
 
   return {
-    mediaType: normalizedType,
-    publicUrl: resolvedUrl,
+    mediaType,
+    publicUrl,
     bucket,
     path,
     width: toNumber(media.width),
@@ -388,7 +394,7 @@ const normalizePostPayload = (rawPost) => {
   const rawComments = Array.isArray(rawPost.comments)
     ? rawPost.comments.map(normalizeComment).filter(Boolean)
     : [];
-  const rawMediaItems = Array.isArray(rawPost.mediaItems || rawPost.media_items)
+  const mediaItems = Array.isArray(rawPost.mediaItems || rawPost.media_items)
     ? (rawPost.mediaItems || rawPost.media_items).map(normalizeMediaItem).filter(Boolean)
     : [];
   const imageBucket = asNullableString(
@@ -412,12 +418,11 @@ const normalizePostPayload = (rawPost) => {
       rawPost.storagePath ||
       rawPost.name,
   );
-  let image = asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url);
+  const imageFromPayload = asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url);
+  const imageFromMedia = mediaItems.find((m) => m.mediaType === 'image' && m.publicUrl)?.publicUrl || null;
+  let image = imageFromPayload || imageFromMedia;
   if (!image && imageBucket && imagePath) {
     image = resolveStoragePublicUrl(imageBucket, imagePath);
-  }
-  if (!image) {
-    image = rawMediaItems.find((item) => item.mediaType === 'image' && item.publicUrl)?.publicUrl || null;
   }
   const likesCount = toNumber(rawPost.likes_count ?? rawPost.likesCount ?? rawPost.likes?.length) ?? rawLikes.length;
   const commentsCount =
@@ -442,7 +447,7 @@ const normalizePostPayload = (rawPost) => {
     liked_by_me: likedByMe,
     comments: rawComments,
     comments_count: commentsCount,
-    mediaItems: rawMediaItems,
+    mediaItems,
   };
 };
 
@@ -609,7 +614,8 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     items = [...posts, ...official, ...sponsored, ...eventNews];
   }
 
-  console.log('[FEED_FIRST_POST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  console.log('[FEED_DEBUG_FIRST_POST]', items?.[0]);
+  console.log('[FEED_DEBUG_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
 
   const responseLimit = toNumber(payload?.limit) ?? limit;
   const responseOffset = toNumber(payload?.offset) ?? offset;
@@ -725,7 +731,8 @@ export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0
     .filter(Boolean)
     .map((post) => ({ kind: 'post', ...post }));
 
-  console.log('[FEED_FIRST_POST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  console.log('[FEED_DEBUG_FIRST_POST]', items?.[0]);
+  console.log('[FEED_DEBUG_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
 
   return {
     items,
