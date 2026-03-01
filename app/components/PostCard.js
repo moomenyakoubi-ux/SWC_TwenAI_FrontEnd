@@ -605,11 +605,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
 
       {mediaItems.map((media, index) => {
         if (!media?.publicUrl) return null;
-        const type = String(media.mediaType || '').toLowerCase();
-        const isImage = type === 'image' || type.startsWith('image/');
-        const isVideo = type === 'video' || type.startsWith('video/');
-
-        if (isImage) {
+        if (media.mediaType === 'image') {
           const mediaAspectRatio =
             media.aspectRatio ||
             media.aspect_ratio ||
@@ -629,7 +625,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
           );
         }
 
-        if (isVideo) {
+        if (media.mediaType === 'video') {
           return (
             <View key={`${media.publicUrl}-${index}`} style={styles.videoPlaceholder}>
               <Ionicons name="videocam" size={20} color={theme.colors.muted} />

@@ -43,13 +43,6 @@ const formatTime = (value) => {
   return `${days}g`;
 };
 
-const normalizeMediaType = (value) => {
-  const type = String(value || '').toLowerCase();
-  if (type.startsWith('image')) return 'image';
-  if (type.startsWith('video')) return 'video';
-  return type;
-};
-
 const buildPostPublishError = ({ tableName, payload, error }) => {
   const code = error?.code || 'no-code';
   const message = error?.message || 'Errore sconosciuto.';
@@ -279,25 +272,16 @@ export const PostsProvider = ({ children }) => {
     }
     let mediaMap = {};
     if (postIds.length) {
-      let mediaRows = [];
-      const { data: fetchedMediaRows, error: mediaError } = await supabase
+      const { data: mediaRows } = await supabase
         .from('post_media')
-        .select('post_id, media_type, bucket, path, width, height, aspect_ratio, ratio_key')
+        .select('post_id, media_type, bucket, path, width, height, duration_seconds, ratio_key, aspect_ratio')
         .in('post_id', postIds);
-      if (mediaError) {
-        console.warn('[POST_MEDIA_FETCH_ERROR]', mediaError);
-      } else {
-        mediaRows = fetchedMediaRows || [];
-      }
       mediaMap = (mediaRows || []).reduce((acc, row) => {
         if (!acc[row.post_id]) acc[row.post_id] = [];
         const bucket = row.bucket || 'post_media';
-        const rawType = String(row.media_type || '').toLowerCase();
-        const normalizedType = normalizeMediaType(rawType);
         const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(row.path || '');
         acc[row.post_id].push({
-          mediaType: normalizedType,
-          rawType,
+          mediaType: row.media_type,
           bucket,
           path: row.path,
           width: row.width,
@@ -306,16 +290,12 @@ export const PostsProvider = ({ children }) => {
           ratio_key: row.ratio_key || null,
           aspectRatio: row.aspect_ratio || null,
           aspect_ratio: row.aspect_ratio || null,
-          durationSeconds: null,
+          durationSeconds: row.duration_seconds,
           publicUrl: urlData?.publicUrl || null,
         });
         return acc;
       }, {});
     }
-    console.log('[MEDIA_DEBUG]', {
-      postId: postIds[0] || null,
-      mediaCount: postIds[0] ? (mediaMap[postIds[0]] || []).length : 0,
-    });
 
     const mapped = postRows.map((post) => {
       const authorProfile = post.profiles || {};
@@ -323,35 +303,7 @@ export const PostsProvider = ({ children }) => {
       const authorAvatarUrl = avatarCacheRef.current.get(post.author_id) || null;
       const avatarColor = getAvatarColor(post.author_id);
 
-      const mediaItemsFromQuery = mediaMap[post.id] || [];
-      const mediaItemsFromFeedSelect = Array.isArray(post.post_media)
-        ? post.post_media
-            .map((row) => {
-              const bucket = row?.bucket || 'post_media';
-              const path = row?.path || '';
-              if (!path) return null;
-              const rawType = String(row?.media_type || '').toLowerCase();
-              const normalizedType = normalizeMediaType(rawType);
-              const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-              return {
-                mediaType: normalizedType || 'image',
-                rawType,
-                bucket,
-                path,
-                width: row?.width ?? null,
-                height: row?.height ?? null,
-                ratioKey: row?.ratio_key || null,
-                ratio_key: row?.ratio_key || null,
-                aspectRatio: row?.aspect_ratio || null,
-                aspect_ratio: row?.aspect_ratio || null,
-                durationSeconds: null,
-                publicUrl: urlData?.publicUrl || null,
-              };
-            })
-            .filter(Boolean)
-        : [];
-      const mediaItems =
-        mediaItemsFromQuery.length > 0 ? mediaItemsFromQuery : mediaItemsFromFeedSelect;
+      const mediaItems = mediaMap[post.id] || [];
       const fallbackImage = mediaItems.find((item) => item.mediaType?.startsWith('image'));
       const firstMedia = mediaItems[0];
       const image = fallbackImage?.publicUrl || null;
