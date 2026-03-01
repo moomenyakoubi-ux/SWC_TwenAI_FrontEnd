@@ -1,4 +1,5 @@
 import { getApiBaseUrl, getSupabaseAccessToken } from '../config/api';
+import { supabase } from '../lib/supabase';
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_AVATAR_COLOR = '#E70013';
@@ -108,6 +109,12 @@ const asString = (value) => (value == null ? '' : String(value).trim());
 const asNullableString = (value) => {
   const text = asString(value);
   return text ? text : null;
+};
+
+const resolveStoragePublicUrl = (bucket, path) => {
+  if (!bucket || !path) return null;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data?.publicUrl || null;
 };
 
 const toNumber = (value) => {
@@ -345,9 +352,27 @@ const normalizeLikeUser = (like, index) => {
 
 const normalizeMediaItem = (media) => {
   if (!media) return null;
+  const bucket = asNullableString(media.bucket || media.bucket_id || media.bucketId || media.storageBucket);
+  const path = asNullableString(media.path || media.name || media.storage_path || media.storagePath);
+  const existingUrl = asNullableString(media.publicUrl || media.public_url || media.url || media.image_url);
+  const resolvedUrl = existingUrl || resolveStoragePublicUrl(bucket, path);
+  const rawType = asString(media.mediaType || media.media_type || media.type || 'image').toLowerCase();
+  const normalizedType =
+    rawType === 'image' || rawType.startsWith('image/')
+      ? 'image'
+      : rawType === 'video' || rawType.startsWith('video/')
+        ? 'video'
+        : rawType;
+
+  if (!resolvedUrl && bucket && path) {
+    console.warn('[MEDIA_URL_MISSING]', { bucket, path, media });
+  }
+
   return {
-    mediaType: asString(media.mediaType || media.media_type || media.type || 'image'),
-    publicUrl: asNullableString(media.publicUrl || media.public_url || media.url || media.image_url),
+    mediaType: normalizedType,
+    publicUrl: resolvedUrl,
+    bucket,
+    path,
     width: toNumber(media.width),
     height: toNumber(media.height),
   };
@@ -366,6 +391,34 @@ const normalizePostPayload = (rawPost) => {
   const rawMediaItems = Array.isArray(rawPost.mediaItems || rawPost.media_items)
     ? (rawPost.mediaItems || rawPost.media_items).map(normalizeMediaItem).filter(Boolean)
     : [];
+  const imageBucket = asNullableString(
+    rawPost.image_bucket ||
+      rawPost.imageBucket ||
+      rawPost.image_bucket_id ||
+      rawPost.imageBucketId ||
+      rawPost.media_bucket ||
+      rawPost.mediaBucket ||
+      rawPost.bucket ||
+      rawPost.bucket_id ||
+      rawPost.bucketId,
+  );
+  const imagePath = asNullableString(
+    rawPost.image_path ||
+      rawPost.imagePath ||
+      rawPost.media_path ||
+      rawPost.mediaPath ||
+      rawPost.path ||
+      rawPost.storage_path ||
+      rawPost.storagePath ||
+      rawPost.name,
+  );
+  let image = asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url);
+  if (!image && imageBucket && imagePath) {
+    image = resolveStoragePublicUrl(imageBucket, imagePath);
+  }
+  if (!image) {
+    image = rawMediaItems.find((item) => item.mediaType === 'image' && item.publicUrl)?.publicUrl || null;
+  }
   const likesCount = toNumber(rawPost.likes_count ?? rawPost.likesCount ?? rawPost.likes?.length) ?? rawLikes.length;
   const commentsCount =
     toNumber(rawPost.comments_count ?? rawPost.commentsCount ?? rawPost.comments?.length) ?? rawComments.length;
@@ -383,7 +436,7 @@ const normalizePostPayload = (rawPost) => {
     authorAvatarUrl: asNullableString(rawPost.authorAvatarUrl || rawPost.author_avatar_url || rawPost.avatar_url),
     time: asString(rawPost.time) || formatRelativeTime(rawPost.created_at || rawPost.createdAt),
     content: asString(rawPost.content || rawPost.body || rawPost.text),
-    image: asNullableString(rawPost.image || rawPost.image_url || rawPost.cover_url),
+    image,
     likes: rawLikes,
     likes_count: likesCount,
     liked_by_me: likedByMe,
@@ -556,6 +609,8 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     items = [...posts, ...official, ...sponsored, ...eventNews];
   }
 
+  console.log('[FEED_FIRST_POST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+
   const responseLimit = toNumber(payload?.limit) ?? limit;
   const responseOffset = toNumber(payload?.offset) ?? offset;
   const totalPosts = toNumber(payload?.totalPosts ?? payload?.total_posts ?? payload?.total);
@@ -669,6 +724,8 @@ export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0
     .map((item) => normalizePostPayload(item))
     .filter(Boolean)
     .map((post) => ({ kind: 'post', ...post }));
+
+  console.log('[FEED_FIRST_POST_MEDIA]', items?.[0]?.mediaItems?.[0]);
 
   return {
     items,
