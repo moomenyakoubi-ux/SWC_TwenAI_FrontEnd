@@ -550,6 +550,17 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
   };
 
   const mediaItems = useMemo(() => post.mediaItems || [], [post.mediaItems]);
+  const renderableMediaItems = useMemo(
+    () => mediaItems.filter((media) => Boolean(media?.publicUrl)),
+    [mediaItems],
+  );
+  if (__DEV__ && !post?.image && mediaItems.length > 0 && renderableMediaItems.length === 0) {
+    console.warn('[POSTCARD_MEDIA_NOT_RENDERABLE]', {
+      postId: post?.id,
+      image: post?.image,
+      firstMedia: mediaItems?.[0] || null,
+    });
+  }
   const aspectRatio =
     post.mediaAspectRatio ||
     post.aspect_ratio ||
@@ -592,7 +603,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         <Text style={[styles.content, isRTL && styles.rtlText]}>{post.content}</Text>
       )}
 
-      {post.image && mediaItems.length === 0 ? (
+      {post.image && renderableMediaItems.length === 0 ? (
         <Image
           source={{ uri: post.image }}
           style={[
@@ -603,9 +614,9 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
         />
       ) : null}
 
-      {mediaItems.map((media, index) => {
-        if (!media?.publicUrl) return null;
-        if (media.mediaType === 'image') {
+      {renderableMediaItems.map((media, index) => {
+        const mediaType = String(media?.mediaType || '').toLowerCase();
+        if (mediaType === 'image' || mediaType.startsWith('image/')) {
           const mediaAspectRatio =
             media.aspectRatio ||
             media.aspect_ratio ||
@@ -625,7 +636,7 @@ const PostCard = ({ post, isRTL, onPressAuthor }) => {
           );
         }
 
-        if (media.mediaType === 'video') {
+        if (mediaType === 'video' || mediaType.startsWith('video/')) {
           return (
             <View key={`${media.publicUrl}-${index}`} style={styles.videoPlaceholder}>
               <Ionicons name="videocam" size={20} color={theme.colors.muted} />

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 const DEFAULT_LIMIT = 20;
 const DEFAULT_AVATAR_COLOR = '#E70013';
+const FEED_DEBUG_ENABLED = __DEV__;
 
 /**
  * @typedef {'event'|'news'} EventsNewsType
@@ -356,10 +357,18 @@ const normalizeMediaItem = (media) => {
     media.bucket ||
       media.bucket_id ||
       media.bucketId ||
+      media.bucket_name ||
       media.storage_bucket ||
       media.storageBucket,
   );
-  const path = asNullableString(media.path || media.name || media.storage_path || media.storagePath);
+  const path = asNullableString(
+    media.path ||
+      media.name ||
+      media.file_path ||
+      media.object_path ||
+      media.storage_path ||
+      media.storagePath,
+  );
   const providedUrl = asNullableString(media.publicUrl || media.public_url || media.url || media.image_url);
   const publicUrl = providedUrl || resolveStoragePublicUrl(bucket, path);
   const rawType = asString(media.mediaType || media.media_type || media.type || 'image').toLowerCase();
@@ -370,7 +379,7 @@ const normalizeMediaItem = (media) => {
         ? 'video'
         : rawType;
 
-  if (!publicUrl && bucket && path) {
+  if (FEED_DEBUG_ENABLED && !publicUrl && bucket && path) {
     console.warn('[MEDIA_URL_MISSING]', { bucket, path, media });
   }
 
@@ -394,8 +403,13 @@ const normalizePostPayload = (rawPost) => {
   const rawComments = Array.isArray(rawPost.comments)
     ? rawPost.comments.map(normalizeComment).filter(Boolean)
     : [];
-  const mediaItems = Array.isArray(rawPost.mediaItems || rawPost.media_items)
-    ? (rawPost.mediaItems || rawPost.media_items).map(normalizeMediaItem).filter(Boolean)
+  const rawMediaItems = rawPost.mediaItems ||
+    rawPost.media_items ||
+    rawPost.post_media ||
+    rawPost.media ||
+    rawPost.attachments;
+  const mediaItems = Array.isArray(rawMediaItems)
+    ? rawMediaItems.map(normalizeMediaItem).filter(Boolean)
     : [];
   const imageBucket = asNullableString(
     rawPost.image_bucket ||
@@ -587,6 +601,11 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     .map((item) => normalizeHomeFeedItem(item))
     .filter(Boolean);
 
+  if (FEED_DEBUG_ENABLED) {
+    const firstRaw = getArrayFromPayload(payload, ['items', 'feed'])?.[0];
+    console.log('[FEED_DEBUG_HOME_RAW_FIRST]', firstRaw);
+  }
+
   if (!items.length) {
     const posts = getArrayFromPayload(payload, ['posts'])
       .map((item) => {
@@ -614,8 +633,10 @@ export const fetchHomeFeed = async ({ limit = DEFAULT_LIMIT, offset = 0, accessT
     items = [...posts, ...official, ...sponsored, ...eventNews];
   }
 
-  console.log('[FEED_DEBUG_FIRST_POST]', items?.[0]);
-  console.log('[FEED_DEBUG_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  if (FEED_DEBUG_ENABLED) {
+    console.log('[FEED_DEBUG_HOME_FIRST_POST]', items?.[0]);
+    console.log('[FEED_DEBUG_HOME_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  }
 
   const responseLimit = toNumber(payload?.limit) ?? limit;
   const responseOffset = toNumber(payload?.offset) ?? offset;
@@ -726,13 +747,18 @@ export const fetchUserPosts = async ({ userId, limit = DEFAULT_LIMIT, offset = 0
   });
 
   const rawItems = getArrayFromPayload(payload, ['items', 'posts', 'data', 'results']);
+  if (FEED_DEBUG_ENABLED) {
+    console.log('[FEED_DEBUG_PUBLIC_PROFILE_RAW_FIRST]', rawItems?.[0]);
+  }
   const items = rawItems
-    .map((item) => normalizePostPayload(item))
+    .map((item) => normalizePostPayload(item?.post || item))
     .filter(Boolean)
     .map((post) => ({ kind: 'post', ...post }));
 
-  console.log('[FEED_DEBUG_FIRST_POST]', items?.[0]);
-  console.log('[FEED_DEBUG_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  if (FEED_DEBUG_ENABLED) {
+    console.log('[FEED_DEBUG_PUBLIC_PROFILE_FIRST_POST]', items?.[0]);
+    console.log('[FEED_DEBUG_PUBLIC_PROFILE_FIRST_MEDIA]', items?.[0]?.mediaItems?.[0]);
+  }
 
   return {
     items,

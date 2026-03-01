@@ -458,6 +458,12 @@ const PublicProfileScreen = ({ route, navigation }) => {
   }, [canViewPrivate, fetchPosts, postsPage]);
 
   useEffect(() => {
+    if (!__DEV__ || !posts.length) return;
+    console.log('[PUBLIC_PROFILE_RENDER_FIRST_POST]', posts[0]);
+    console.log('[PUBLIC_PROFILE_RENDER_FIRST_MEDIA]', posts[0]?.mediaItems?.[0]);
+  }, [posts]);
+
+  useEffect(() => {
     if (!canViewPrivate) return;
     if (activeList === 'followers') {
       fetchFollowers(followersPage);

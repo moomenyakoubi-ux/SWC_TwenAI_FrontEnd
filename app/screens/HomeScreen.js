@@ -233,6 +233,12 @@ const HomeScreen = ({ navigation }) => {
 
   const keyExtractor = useCallback((item) => `${item.kind}:${item.id}`, []);
 
+  useEffect(() => {
+    if (!__DEV__ || !homeFeedItems.length) return;
+    console.log('[HOME_RENDER_FIRST_ITEM]', homeFeedItems[0]);
+    console.log('[HOME_RENDER_FIRST_MEDIA]', homeFeedItems[0]?.mediaItems?.[0]);
+  }, [homeFeedItems]);
+
   const openEventNewsItem = useCallback(
     (item) => {
       const targetUrl = String(item?.external_url || '').trim();
