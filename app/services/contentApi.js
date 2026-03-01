@@ -126,6 +126,13 @@ const toBoolean = (value) => {
   return null;
 };
 
+const normalizeMediaType = (value) => {
+  const type = asString(value).toLowerCase();
+  if (type.startsWith('image')) return 'image';
+  if (type.startsWith('video')) return 'video';
+  return type;
+};
+
 const getArrayFromPayload = (payload, keys) => {
   if (Array.isArray(payload)) return payload;
   for (const key of keys) {
@@ -348,11 +355,14 @@ const normalizeMediaItem = (media) => {
   if (!media) return null;
   const bucket = asNullableString(media.bucket) || 'post_media';
   const path = asNullableString(media.path);
+  const rawType = asString(media.mediaType || media.media_type || media.type).toLowerCase();
+  const normalizedType = normalizeMediaType(rawType || 'image');
   const resolvedPublicUrl =
     asNullableString(media.publicUrl || media.public_url || media.url || media.image_url) ||
     (path ? supabase.storage.from(bucket).getPublicUrl(path).data?.publicUrl || null : null);
   return {
-    mediaType: asString(media.mediaType || media.media_type || media.type || 'image'),
+    mediaType: normalizedType,
+    rawType,
     publicUrl: resolvedPublicUrl,
     bucket,
     path,

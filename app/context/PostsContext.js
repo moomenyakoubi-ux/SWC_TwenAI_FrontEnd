@@ -43,6 +43,13 @@ const formatTime = (value) => {
   return `${days}g`;
 };
 
+const normalizeMediaType = (value) => {
+  const type = String(value || '').toLowerCase();
+  if (type.startsWith('image')) return 'image';
+  if (type.startsWith('video')) return 'video';
+  return type;
+};
+
 const buildPostPublishError = ({ tableName, payload, error }) => {
   const code = error?.code || 'no-code';
   const message = error?.message || 'Errore sconosciuto.';
@@ -285,9 +292,12 @@ export const PostsProvider = ({ children }) => {
       mediaMap = (mediaRows || []).reduce((acc, row) => {
         if (!acc[row.post_id]) acc[row.post_id] = [];
         const bucket = row.bucket || 'post_media';
+        const rawType = String(row.media_type || '').toLowerCase();
+        const normalizedType = normalizeMediaType(rawType);
         const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(row.path || '');
         acc[row.post_id].push({
-          mediaType: row.media_type,
+          mediaType: normalizedType,
+          rawType,
           bucket,
           path: row.path,
           width: row.width,
@@ -320,9 +330,12 @@ export const PostsProvider = ({ children }) => {
               const bucket = row?.bucket || 'post_media';
               const path = row?.path || '';
               if (!path) return null;
+              const rawType = String(row?.media_type || '').toLowerCase();
+              const normalizedType = normalizeMediaType(rawType);
               const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
               return {
-                mediaType: row?.media_type || 'image',
+                mediaType: normalizedType || 'image',
+                rawType,
                 bucket,
                 path,
                 width: row?.width ?? null,
