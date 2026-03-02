@@ -5,6 +5,7 @@ import { useAppTheme } from '../context/ThemeContext';
 
 export const WEB_SIDE_MENU_WIDTH = 380;
 const twensaWordmark = require('../../assets/brand/twensa-wordmark.png');
+const WORDMARK_ASPECT_RATIO = 468 / 133;
 
 const getMenuItems = (menuStrings) => [
   { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
@@ -135,8 +136,8 @@ const createStyles = (appTheme) =>
       alignItems: 'flex-end',
     },
     menuTitleWordmark: {
-      width: 170,
-      height: 30,
+      height: 36,
+      aspectRatio: WORDMARK_ASPECT_RATIO,
       marginTop: Platform.OS === 'android' ? appTheme.spacing.sm : 0,
     },
     menuTitleWordmarkRtl: {

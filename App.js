@@ -41,6 +41,7 @@ import { isUpdatePasswordLink } from './app/utils/authRedirect';
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
 const twensaElephantIcon = require('./assets/brand/twensa-elephant.png');
+const ELEPHANT_ICON_VISUAL_SCALE = 1.5;
 
 const Tab = createBottomTabNavigator();
 const AUTH_ROUTES = {
@@ -96,7 +97,12 @@ const AppTabs = () => {
         return (
           <Image
             source={twensaElephantIcon}
-            style={{ width: size, height: size, tintColor: color }}
+            style={{
+              width: size,
+              height: size,
+              tintColor: color,
+              transform: [{ scale: ELEPHANT_ICON_VISUAL_SCALE }],
+            }}
             resizeMode="contain"
           />
         );

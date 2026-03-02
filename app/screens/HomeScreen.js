@@ -30,6 +30,7 @@ import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
 const twensaWordmark = require('../../assets/brand/twensa-wordmark.png');
+const WORDMARK_ASPECT_RATIO = 468 / 133;
 const HOME_PAGE_SIZE = 20;
 const EVENT_NEWS_DETAIL_ROUTES = ['EventNewsDetail', 'NewsDetail', 'EventDetail'];
 const resolveFeedItemType = (item) => {
@@ -502,8 +503,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   wordmark: {
-    width: 190,
-    height: 34,
+    height: 46,
+    aspectRatio: WORDMARK_ASPECT_RATIO,
     marginBottom: theme.spacing.xs,
   },
   wordmarkRtl: {
@@ -588,8 +589,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg,
   },
   menuTitleWordmark: {
-    width: 170,
-    height: 30,
+    height: 36,
+    aspectRatio: WORDMARK_ASPECT_RATIO,
     marginTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
   },
   menuTitleWordmarkRtl: {
