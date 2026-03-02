@@ -140,7 +140,7 @@ const AppTabs = ({ navigationRef }) => {
     headerShown: false,
   });
 
-  const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} /> } : {};
+  const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} navigationRef={navigationRef} /> } : {};
 
   const sidebarTitle = strings.home?.greeting || strings.menu?.userProfile;
 

@@ -17,7 +17,12 @@ const getActiveRouteNameFromState = (state) => {
   return currentRoute.name ?? null;
 };
 
-const resolveCurrentRouteName = ({ state, navigation }) => {
+const resolveCurrentRouteName = ({ state, navigation, navigationRef }) => {
+  const navigationFromRef = navigationRef?.current;
+  const fromRefRoute = navigationFromRef?.getCurrentRoute?.()?.name;
+  if (fromRefRoute) return fromRefRoute;
+  const fromRefState = getActiveRouteNameFromState(navigationFromRef?.getState?.());
+  if (fromRefState) return fromRefState;
   const fromState = getActiveRouteNameFromState(state);
   if (fromState) return fromState;
   const fromNavigationState = getActiveRouteNameFromState(navigation?.getState?.());
@@ -26,7 +31,7 @@ const resolveCurrentRouteName = ({ state, navigation }) => {
   return directRoute?.name ?? null;
 };
 
-const WebTabBar = ({ state, descriptors, navigation }) => {
+const WebTabBar = ({ state, descriptors, navigation, navigationRef }) => {
   if (Platform.OS !== 'web') return null;
 
   const { theme: appTheme } = useAppTheme();
@@ -35,7 +40,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   const widthAnim = useRef(new Animated.Value(COLLAPSED_TAB_BAR_WIDTH)).current;
   const labelOpacity = useRef(new Animated.Value(0)).current;
   const [currentRouteName, setCurrentRouteName] = useState(() =>
-    resolveCurrentRouteName({ state, navigation }),
+    resolveCurrentRouteName({ state, navigation, navigationRef }),
   );
 
   useEffect(() => {
@@ -54,22 +59,49 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   }, [isExpanded, labelOpacity, widthAnim]);
 
   useEffect(() => {
-    setCurrentRouteName(resolveCurrentRouteName({ state, navigation }));
-  }, [navigation, state]);
+    setCurrentRouteName(resolveCurrentRouteName({ state, navigation, navigationRef }));
+  }, [navigation, navigationRef, state]);
 
   useEffect(() => {
-    const syncActiveRoute = () => setCurrentRouteName(resolveCurrentRouteName({ navigation }));
-    syncActiveRoute();
-    if (!navigation?.addListener) return undefined;
+    let unsubscribeState;
+    let unsubscribeFocus;
+    let unsubscribeRefState;
+    let unsubscribeRefFocus;
+    let frameId = null;
+    let isMounted = true;
 
-    const unsubscribeState = navigation.addListener('state', syncActiveRoute);
-    const unsubscribeFocus = navigation.addListener('focus', syncActiveRoute);
+    const syncActiveRoute = () => {
+      if (!isMounted) return;
+      setCurrentRouteName(resolveCurrentRouteName({ state, navigation, navigationRef }));
+    };
+
+    const attachRefListeners = () => {
+      if (!isMounted) return;
+      const navRefCurrent = navigationRef?.current;
+      if (!navRefCurrent?.addListener) {
+        frameId = requestAnimationFrame(attachRefListeners);
+        return;
+      }
+      unsubscribeRefState = navRefCurrent.addListener('state', syncActiveRoute);
+      unsubscribeRefFocus = navRefCurrent.addListener('focus', syncActiveRoute);
+    };
+
+    syncActiveRoute();
+    if (navigation?.addListener) {
+      unsubscribeState = navigation.addListener('state', syncActiveRoute);
+      unsubscribeFocus = navigation.addListener('focus', syncActiveRoute);
+    }
+    attachRefListeners();
 
     return () => {
+      isMounted = false;
+      if (frameId) cancelAnimationFrame(frameId);
       if (typeof unsubscribeState === 'function') unsubscribeState();
       if (typeof unsubscribeFocus === 'function') unsubscribeFocus();
+      if (typeof unsubscribeRefState === 'function') unsubscribeRefState();
+      if (typeof unsubscribeRefFocus === 'function') unsubscribeRefFocus();
     };
-  }, [navigation]);
+  }, [navigation, navigationRef, state]);
 
   const labelWidth = widthAnim.interpolate({
     inputRange: [COLLAPSED_TAB_BAR_WIDTH, EXPANDED_TAB_BAR_WIDTH],
