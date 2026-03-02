@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
 
 const COLLAPSED_TAB_BAR_WIDTH = 88;
@@ -7,23 +7,6 @@ const EXPANDED_TAB_BAR_WIDTH = 244;
 const ANIMATION_DURATION = 220;
 
 export const WEB_TAB_BAR_WIDTH = COLLAPSED_TAB_BAR_WIDTH;
-
-const getActiveRouteNameFromState = (state) => {
-  if (!state?.routes?.length) return null;
-  const currentRoute = state.routes[state.index ?? 0];
-  if (!currentRoute) return null;
-  if (currentRoute.state) return getActiveRouteNameFromState(currentRoute.state);
-  return currentRoute.name ?? null;
-};
-
-const resolveCurrentRouteName = (state, navigation) => {
-  const fromState = getActiveRouteNameFromState(state);
-  if (fromState) return fromState;
-  const directRoute = navigation?.getCurrentRoute?.();
-  if (directRoute?.name) return directRoute.name;
-  const fallbackState = navigation?.getState?.();
-  return getActiveRouteNameFromState(fallbackState);
-};
 
 const WebTabBar = ({ state, descriptors, navigation }) => {
   if (Platform.OS !== 'web') return null;
@@ -33,7 +16,6 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const widthAnim = useRef(new Animated.Value(COLLAPSED_TAB_BAR_WIDTH)).current;
   const labelOpacity = useRef(new Animated.Value(0)).current;
-  const currentRouteName = useMemo(() => resolveCurrentRouteName(state, navigation), [navigation, state]);
 
   useEffect(() => {
     Animated.parallel([
@@ -68,7 +50,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
-      {state.routes.map((route) => {
+      {state.routes.map((route, index) => {
         const { options } = descriptors[route.key];
         const isHidden =
           options?.tabBarStyle?.display === 'none' || options?.tabBarItemStyle?.display === 'none';
@@ -85,7 +67,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
               : route.name;
         const labelText = typeof label === 'string' ? label : route.name;
 
-        const isFocused = currentRouteName === route.name;
+        const isFocused = state.index === index;
         const onPress = () => {
           const event = navigation.emit({
             type: 'tabPress',
@@ -117,26 +99,18 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
             ]}
           >
             {({ hovered }) => {
-              const iconColor = isFocused
-                ? appTheme.colors.card
-                : hovered
-                  ? appTheme.colors.primary
-                  : appTheme.colors.secondary;
-
-              // UI-only: swap the HOME icon with the Twensa elephant PNG.
-              // Do not change any navigation/active logic.
               const icon =
-                route.name === 'Home'
-                  ? (
-                    <Image
-                      source={require('../../assets/brand/twensa-elephant.png')}
-                      style={{ width: 26, height: 26, tintColor: iconColor }}
-                      resizeMode="contain"
-                    />
-                  )
-                  : typeof options.tabBarIcon === 'function'
-                    ? options.tabBarIcon({ focused: isFocused, size: 22, color: iconColor })
-                    : null;
+                typeof options.tabBarIcon === 'function'
+                  ? options.tabBarIcon({
+                      focused: isFocused,
+                      size: 22,
+                      color: isFocused
+                        ? appTheme.colors.card
+                        : hovered
+                          ? appTheme.colors.primary
+                          : appTheme.colors.secondary,
+                    })
+                  : null;
 
               return (
                 <>
