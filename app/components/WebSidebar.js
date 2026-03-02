@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 
 export const WEB_SIDE_MENU_WIDTH = 380;
+const twensaWordmark = require('../../assets/brand/twensa-wordmark.png');
 
 const getMenuItems = (menuStrings) => [
   { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
@@ -56,7 +57,12 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
 
   return (
     <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, styles.sideMenuWeb]}>
-      <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{title}</Text>
+      <Image
+        source={twensaWordmark}
+        style={[styles.menuTitleWordmark, isRTL && styles.menuTitleWordmarkRtl]}
+        resizeMode="contain"
+        accessibilityLabel={title}
+      />
       <View style={styles.menuItems}>
         {getMenuItems(menuStrings).map((item) => {
           const isActive = activeRoute === item.route;
@@ -128,11 +134,13 @@ const createStyles = (appTheme) =>
     sideMenuRtl: {
       alignItems: 'flex-end',
     },
-    menuTitle: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: appTheme.colors.text,
+    menuTitleWordmark: {
+      width: 170,
+      height: 30,
       marginTop: Platform.OS === 'android' ? appTheme.spacing.sm : 0,
+    },
+    menuTitleWordmarkRtl: {
+      alignSelf: 'flex-end',
     },
     menuItems: {
       gap: appTheme.spacing.sm,

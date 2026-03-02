@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   FlatList,
+  Image,
   ImageBackground,
   Linking,
   Platform,
@@ -28,6 +29,7 @@ import { supabase } from '../lib/supabase';
 import { fetchHomeFeed } from '../services/contentApi';
 
 const backgroundImage = require('../images/image1.png');
+const twensaWordmark = require('../../assets/brand/twensa-wordmark.png');
 const HOME_PAGE_SIZE = 20;
 const EVENT_NEWS_DETAIL_ROUTES = ['EventNewsDetail', 'NewsDetail', 'EventDetail'];
 const resolveFeedItemType = (item) => {
@@ -352,7 +354,12 @@ const HomeScreen = ({ navigation }) => {
       <View style={styles.overlay}>
         <View style={[styles.header, isRTL && styles.headerRtl, isWeb && styles.headerWeb]}>
           <View style={styles.headerText}>
-            <Text style={[styles.greeting, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
+            <Image
+              source={twensaWordmark}
+              style={[styles.wordmark, isRTL && styles.wordmarkRtl]}
+              resizeMode="contain"
+              accessibilityLabel={homeStrings.greeting}
+            />
             <Text style={[styles.subtitle, isRTL && styles.rtlText]}>{homeStrings.subtitle}</Text>
           </View>
           {!isWeb ? (
@@ -407,7 +414,12 @@ const HomeScreen = ({ navigation }) => {
               },
             ]}
           >
-            <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
+            <Image
+              source={twensaWordmark}
+              style={[styles.menuTitleWordmark, isRTL && styles.menuTitleWordmarkRtl]}
+              resizeMode="contain"
+              accessibilityLabel={homeStrings.greeting}
+            />
             <View style={styles.menuItems}>
               {[
                 { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
@@ -489,11 +501,13 @@ const styles = StyleSheet.create({
   cmsItemWrapWeb: {
     alignItems: 'center',
   },
-  greeting: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: theme.colors.card,
+  wordmark: {
+    width: 190,
+    height: 34,
     marginBottom: theme.spacing.xs,
+  },
+  wordmarkRtl: {
+    alignSelf: 'flex-end',
   },
   subtitle: {
     color: theme.colors.card,
@@ -573,11 +587,13 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
     gap: theme.spacing.lg,
   },
-  menuTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: theme.colors.text,
+  menuTitleWordmark: {
+    width: 170,
+    height: 30,
     marginTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
+  },
+  menuTitleWordmarkRtl: {
+    alignSelf: 'flex-end',
   },
   menuItems: {
     gap: theme.spacing.sm,

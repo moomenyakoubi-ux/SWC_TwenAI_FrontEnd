@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, StatusBar, View } from 'react-native';
 import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +40,7 @@ import { isUpdatePasswordLink } from './app/utils/authRedirect';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
+const twensaElephantIcon = require('./assets/brand/twensa-elephant.png');
 
 const Tab = createBottomTabNavigator();
 const AUTH_ROUTES = {
@@ -91,8 +92,17 @@ const AppTabs = () => {
 
   const screenOptions = ({ route }) => ({
     tabBarIcon: ({ color, size }) => {
+      if (route.name === 'Home') {
+        return (
+          <Image
+            source={twensaElephantIcon}
+            style={{ width: size, height: size, tintColor: color }}
+            resizeMode="contain"
+          />
+        );
+      }
+
       const icons = {
-        Home: 'home',
         Chat: 'chatbubble-ellipses',
         Notizie: 'newspaper',
         Viaggi: 'airplane',
@@ -134,7 +144,11 @@ const AppTabs = () => {
   return (
     <>
       <Tab.Navigator screenOptions={screenOptions} {...navigatorProps}>
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: strings.tabs.home }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{ tabBarLabel: isWeb ? 'Twensa' : strings.tabs.home }}
+      />
       <Tab.Screen name="Chat" component={ChatScreen} options={{ tabBarLabel: strings.tabs.chat }} />
       <Tab.Screen name="Notizie" component={NewsScreen} options={{ tabBarLabel: strings.tabs.news }} />
       <Tab.Screen name="Viaggi" component={TravelScreen} options={{ tabBarLabel: strings.tabs.travel }} />
