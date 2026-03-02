@@ -105,7 +105,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
               if (route.name === 'Home') {
               icon = (
                 <Image
-                 source={require('../assets/brand/twensa-elephant.png')}
+                 source={require('../../assets/brand/twensa-elephant.png')}
                  style={{
                  width: ICON_SIZE + 4,
                  height: ICON_SIZE + 4,
