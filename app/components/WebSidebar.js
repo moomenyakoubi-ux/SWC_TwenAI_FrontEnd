@@ -28,7 +28,10 @@ const getActiveRouteNameFromState = (state) => {
   return currentRoute.name ?? null;
 };
 
-const resolveCurrentRouteName = (nav) => {
+const getNavigationObject = (navigationRef) => navigationRef?.current ?? navigationRef;
+
+const resolveCurrentRouteName = (navigationRef) => {
+  const nav = getNavigationObject(navigationRef);
   const directRoute = nav?.getCurrentRoute?.();
   if (directRoute?.name) return directRoute.name;
   const state = nav?.getState?.();
@@ -40,29 +43,41 @@ const WebSidebar = ({ title, menuStrings, navigationRef, isRTL }) => {
 
   const { theme: appTheme } = useAppTheme();
   const styles = useMemo(() => createStyles(appTheme), [appTheme]);
-  const nav = navigationRef?.current ?? navigationRef;
   const [hoveredRoute, setHoveredRoute] = useState(null);
-  const [activeRoute, setActiveRoute] = useState(() => resolveCurrentRouteName(nav));
+  const [activeRoute, setActiveRoute] = useState(() => resolveCurrentRouteName(navigationRef));
 
   useEffect(() => {
     let unsubscribeState;
     let unsubscribeFocus;
+    let frameId = null;
+    let isMounted = true;
 
     const syncActiveRoute = () => {
-      setActiveRoute(resolveCurrentRouteName(nav));
+      if (!isMounted) return;
+      setActiveRoute(resolveCurrentRouteName(navigationRef));
     };
 
-    syncActiveRoute();
-    if (nav?.addListener) {
+    const attachListeners = () => {
+      if (!isMounted) return;
+      const nav = getNavigationObject(navigationRef);
+      syncActiveRoute();
+      if (!nav?.addListener) {
+        frameId = requestAnimationFrame(attachListeners);
+        return;
+      }
       unsubscribeState = nav.addListener('state', syncActiveRoute);
       unsubscribeFocus = nav.addListener('focus', syncActiveRoute);
-    }
+    };
+
+    attachListeners();
 
     return () => {
+      isMounted = false;
+      if (frameId) cancelAnimationFrame(frameId);
       if (typeof unsubscribeState === 'function') unsubscribeState();
       if (typeof unsubscribeFocus === 'function') unsubscribeFocus();
     };
-  }, [nav]);
+  }, [navigationRef]);
 
   return (
     <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, styles.sideMenuWeb]}>
@@ -101,6 +116,7 @@ const WebSidebar = ({ title, menuStrings, navigationRef, isRTL }) => {
               onMouseEnter={() => setHoveredRoute(item.route)}
               onMouseLeave={() => setHoveredRoute((current) => (current === item.route ? null : current))}
               onPress={() => {
+                const nav = getNavigationObject(navigationRef);
                 if (nav?.isReady?.()) nav.navigate(item.route);
                 else if (nav?.navigate) nav.navigate(item.route);
               }}

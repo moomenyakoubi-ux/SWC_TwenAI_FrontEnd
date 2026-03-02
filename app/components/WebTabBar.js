@@ -17,13 +17,15 @@ const getActiveRouteNameFromState = (state) => {
 };
 
 const resolveCurrentRouteName = ({ state, navigation, navigationRef }) => {
+  const fromState = getActiveRouteNameFromState(state);
+  if (fromState) return fromState;
+
   const navFromRef = navigationRef?.current ?? navigationRef;
   const fromRefRoute = navFromRef?.getCurrentRoute?.()?.name;
   if (fromRefRoute) return fromRefRoute;
   const fromRefState = getActiveRouteNameFromState(navFromRef?.getState?.());
   if (fromRefState) return fromRefState;
-  const fromState = getActiveRouteNameFromState(state);
-  if (fromState) return fromState;
+
   const fromNavigationState = getActiveRouteNameFromState(navigation?.getState?.());
   if (fromNavigationState) return fromNavigationState;
   const directRoute = navigation?.getCurrentRoute?.();
