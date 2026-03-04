@@ -137,7 +137,7 @@ const AppTabs = () => {
     headerShown: false,
   });
 
-  const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} /> } : {};
+  const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar key={props.state?.index} {...props} /> } : {};
 
   const sidebarTitle = strings.home?.greeting || strings.menu?.userProfile;
 
