@@ -13,7 +13,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
   if (Platform.OS !== 'web') return null;
 
   const { theme: appTheme } = useAppTheme();
-  const { currentRouteName } = useNavigationContext();
+  const { currentRouteName, setCurrentRouteName } = useNavigationContext();
   const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const [isExpanded, setIsExpanded] = useState(false);
   const widthAnim = useRef(new Animated.Value(COLLAPSED_TAB_BAR_WIDTH)).current;
@@ -48,6 +48,13 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
 
   const tabActiveRouteName = state.routes[state.index]?.name;
   const activeRouteName = currentRouteName || tabActiveRouteName;
+  
+  // Sincronizza il context quando cambia la tab attiva (quando navighi dalla tab bar)
+  useEffect(() => {
+    if (tabActiveRouteName && tabActiveRouteName !== currentRouteName) {
+      setCurrentRouteName(tabActiveRouteName);
+    }
+  }, [tabActiveRouteName, currentRouteName, setCurrentRouteName]);
 
   return (
     <Animated.View
@@ -56,7 +63,7 @@ const WebTabBar = ({ state, descriptors, navigation }) => {
       onMouseLeave={() => setIsExpanded(false)}
     >
       {/* DEBUG INFO */}
-      <View style={{ position: 'absolute', top: 0, left: 0, backgroundColor: 'yellow', padding: 4, zIndex: 100 }}>
+      <View style={{ position: 'absolute', bottom: 20, left: 10, backgroundColor: 'yellow', padding: 4, zIndex: 100 }}>
         <Text style={{ fontSize: 10 }}>ctx: {currentRouteName || 'null'}</Text>
         <Text style={{ fontSize: 10 }}>tab: {tabActiveRouteName || 'null'}</Text>
         <Text style={{ fontSize: 10 }}>idx: {state.index}</Text>
