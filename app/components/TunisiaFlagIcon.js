@@ -1,92 +1,103 @@
 import React from 'react';
-import Svg, { Circle, Path, Polygon, G } from 'react-native-svg';
+import Svg, { Circle, Path, Polygon, Defs, ClipPath, G } from 'react-native-svg';
 
 /**
  * Icona della bandiera della Tunisia a forma di cerchio
- * @param {number} size - Dimensione dell'icona (default: 24)
- * @param {string} color - Colore del bordo (opzionale)
- * @param {boolean} isHome - Se true, l'icona è più grande (per il tasto Home)
+ * Bandiera ufficiale della Tunisia:
+ * - Sfondo rosso
+ * - Disco bianco centrale
+ * - Mezzaluna rossa (concavità a destra)
+ * - Stella a 5 punte rossa
  */
 const TunisiaFlagIcon = ({ size = 24, color, isHome = false }) => {
-  // Per il tasto Home, ingrandiamo del 30%
-  const scaleFactor = isHome ? 1.4 : 1.0;
-  const finalSize = size * scaleFactor;
+  // Scala per il tasto Home
+  const scale = isHome ? 1.3 : 1.0;
+  const s = size * scale;
   
-  // Scala l'icona per riempire meglio lo spazio
-  const scale = 1.2;
-  const viewSize = finalSize * scale;
-  const center = viewSize / 2;
-  const radius = (finalSize / 2) - 1;
+  // Colore rosso ufficiale Tunisia
+  const RED = '#E70013';
+  const WHITE = '#FFFFFF';
   
-  // Colori bandiera Tunisia
-  const redColor = '#E70013';    // Rosso tunisino
-  const whiteColor = '#FFFFFF';  // Bianco
-
-  // Dimensioni più grandi per i simboli
-  const whiteCircleRadius = radius * 0.50;
-  const symbolSize = radius * 0.40; // Simboli più grandi
-  const spacing = radius * 0.08;    // Spazio tra mezzaluna e stella
+  // Centro e raggio
+  const cx = s / 2;
+  const cy = s / 2;
+  const r = (s / 2) - (isHome ? 1.5 : 1);
+  
+  // Raggi proporzionali
+  const whiteRadius = r * 0.40;      // Cerchio bianco
+  const moonRadius = r * 0.22;       // Raggio mezzaluna
+  const starRadius = r * 0.14;       // Raggio stella
+  
+  // Posizioni: mezzaluna a sinistra, stella a destra
+  const moonX = cx - r * 0.06;       // Leggermente a sinistra del centro
+  const starX = cx + r * 0.12;       // A destra della mezzaluna
+  
+  // Genera i punti della stella a 5 punte
+  const getStarPoints = (centerX, centerY, outerRadius, innerRadius) => {
+    const points = [];
+    for (let i = 0; i < 10; i++) {
+      const angle = (i * 36 - 90) * (Math.PI / 180); // -90 per puntare in alto
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
+      points.push(`${centerX + radius * Math.cos(angle)},${centerY + radius * Math.sin(angle)}`);
+    }
+    return points.join(' ');
+  };
 
   return (
     <Svg 
-      width={finalSize} 
-      height={finalSize} 
-      viewBox={`0 0 ${viewSize} ${viewSize}`}
-      style={{ 
-        marginTop: isHome ? -4 : 0,
-        marginBottom: isHome ? -4 : 0 
-      }}
+      width={s} 
+      height={s} 
+      viewBox={`0 0 ${s} ${s}`}
+      style={isHome ? { marginTop: -3, marginBottom: -3 } : {}}
     >
-      <G transform={`translate(${(viewSize - finalSize) / 2}, ${(viewSize - finalSize) / 2})`}>
-        {/* Cerchio rosso esterno (sfondo) */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill={redColor}
-          stroke={color || redColor}
-          strokeWidth={isHome ? 1.5 : 1}
+      <Defs>
+        <ClipPath id="circleClip">
+          <Circle cx={cx} cy={cy} r={r} />
+        </ClipPath>
+      </Defs>
+      
+      {/* Sfondo rosso */}
+      <Circle 
+        cx={cx} 
+        cy={cy} 
+        r={r} 
+        fill={RED}
+        stroke={color || RED}
+        strokeWidth={isHome ? 1.5 : 1}
+      />
+      
+      {/* Disco bianco centrale */}
+      <Circle 
+        cx={cx} 
+        cy={cy} 
+        r={whiteRadius} 
+        fill={WHITE}
+      />
+      
+      {/* Mezzaluna rossa - corretta: concavità verso destra */}
+      {/* Due cerchi sovrapposti per creare la mezzaluna */}
+      <G>
+        {/* Cerchio rosso pieno */}
+        <Circle 
+          cx={moonX} 
+          cy={cy} 
+          r={moonRadius} 
+          fill={RED}
         />
-        
-        {/* Cerchio bianco interno */}
-        <Circle
-          cx={center}
-          cy={center}
-          r={whiteCircleRadius}
-          fill={whiteColor}
+        {/* Cerchio bianco che "taglia" per fare la mezzaluna */}
+        <Circle 
+          cx={moonX + moonRadius * 0.35} 
+          cy={cy} 
+          r={moonRadius * 0.9} 
+          fill={WHITE}
         />
-        
-        {/* Gruppo mezzaluna + stella */}
-        <G>
-          {/* Mezzaluna rossa - a sinistra (sistemata per essere più visibile) */}
-          <Path
-            d={`
-              M ${center - spacing} ${center - symbolSize}
-              A ${symbolSize} ${symbolSize} 0 1 1 ${center - spacing} ${center + symbolSize}
-              A ${symbolSize * 0.70} ${symbolSize * 0.70} 0 1 0 ${center - spacing} ${center - symbolSize}
-              Z
-            `}
-            fill={redColor}
-          />
-          
-          {/* Stella a 5 punte rossa - a destra */}
-          <Polygon
-            points={`
-              ${center + spacing + symbolSize * 0.6},${center - symbolSize * 0.95}
-              ${center + spacing + symbolSize * 0.9},${center - symbolSize * 0.3}
-              ${center + spacing + symbolSize * 1.4},${center - symbolSize * 0.3}
-              ${center + spacing + symbolSize * 1.0},${center + symbolSize * 0.1}
-              ${center + spacing + symbolSize * 1.15},${center + symbolSize * 0.65}
-              ${center + spacing + symbolSize * 0.6},${center + symbolSize * 0.4}
-              ${center + spacing + symbolSize * 0.05},${center + symbolSize * 0.65}
-              ${center + spacing + symbolSize * 0.2},${center + symbolSize * 0.1}
-              ${center + spacing - symbolSize * 0.3},${center - symbolSize * 0.3}
-              ${center + spacing + symbolSize * 0.2},${center - symbolSize * 0.3}
-            `}
-            fill={redColor}
-          />
-        </G>
       </G>
+      
+      {/* Stella a 5 punte rossa a destra */}
+      <Polygon
+        points={getStarPoints(starX, cy, starRadius, starRadius * 0.4)}
+        fill={RED}
+      />
     </Svg>
   );
 };
