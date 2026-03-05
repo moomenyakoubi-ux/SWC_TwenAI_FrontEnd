@@ -30,6 +30,7 @@ import { PostsProvider } from './app/context/PostsContext';
 import { ThemeProvider, useAppTheme } from './app/context/ThemeContext';
 import WebTabBar from './app/components/WebTabBar';
 import WebSidebar from './app/components/WebSidebar';
+import TunisiaFlagIcon from './app/components/TunisiaFlagIcon';
 import AuthScreen from './app/screens/AuthScreen';
 import ForgotPasswordScreen from './app/screens/ForgotPasswordScreen';
 import UpdatePasswordScreen from './app/screens/UpdatePasswordScreen';
@@ -90,9 +91,13 @@ const AppTabs = () => {
   };
 
   const screenOptions = ({ route }) => ({
-    tabBarIcon: ({ color, size }) => {
+    tabBarIcon: ({ color, size, focused }) => {
+      // Icona personalizzata per Home (bandiera Tunisia)
+      if (route.name === 'Home') {
+        return <TunisiaFlagIcon size={size} color={focused ? undefined : color} />;
+      }
+      
       const icons = {
-        Home: 'star',
         Chat: 'chatbubble-ellipses',
         Notizie: 'newspaper',
         Viaggi: 'airplane',
