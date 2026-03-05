@@ -24,6 +24,7 @@ import theme from '../styles/theme';
 import { useLanguage } from '../context/LanguageContext';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
+import TunisiaFlagIcon from '../components/TunisiaFlagIcon';
 import { supabase } from '../lib/supabase';
 import { fetchHomeFeed } from '../services/contentApi';
 
@@ -407,7 +408,10 @@ const HomeScreen = ({ navigation }) => {
               },
             ]}
           >
-            <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
+            <View style={[styles.menuTitleContainer, isRTL && styles.menuTitleContainerRtl]}>
+              <TunisiaFlagIcon size={28} />
+              <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{homeStrings.greeting}</Text>
+            </View>
             <View style={styles.menuItems}>
               {[
                 { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
@@ -573,11 +577,19 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
     gap: theme.spacing.lg,
   },
+  menuTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
+  },
+  menuTitleContainerRtl: {
+    flexDirection: 'row-reverse',
+  },
   menuTitle: {
     fontSize: 22,
     fontWeight: '800',
     color: theme.colors.text,
-    marginTop: Platform.OS === 'android' ? theme.spacing.sm : 0,
   },
   menuItems: {
     gap: theme.spacing.sm,

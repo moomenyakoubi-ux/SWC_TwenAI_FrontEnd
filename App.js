@@ -134,15 +134,26 @@ const AppTabs = () => {
 
   const navigatorProps = isWeb ? { tabBar: (props) => <WebTabBar {...props} /> } : {};
 
+  // Titolo per la sidebar web con icona Tunisia
   const sidebarTitle = strings.home?.greeting || strings.menu?.userProfile;
+
+  // Opzioni tab: su mobile nascoste (solo icone), su web visibili
+  const getTabOptions = (label, isMainTab = false) => {
+    if (Platform.OS !== 'web' && isMainTab) {
+      // Mobile: nascondi le label dei tab principali
+      return { tabBarLabel: undefined };
+    }
+    // Web: mostra le label, Home diventa "Twensa"
+    return { tabBarLabel: label };
+  };
 
   return (
     <>
       <Tab.Navigator screenOptions={screenOptions} {...navigatorProps}>
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: strings.tabs.home }} />
-      <Tab.Screen name="Chat" component={ChatScreen} options={{ tabBarLabel: strings.tabs.chat }} />
-      <Tab.Screen name="Notizie" component={NewsScreen} options={{ tabBarLabel: strings.tabs.news }} />
-      <Tab.Screen name="Viaggi" component={TravelScreen} options={{ tabBarLabel: strings.tabs.travel }} />
+      <Tab.Screen name="Home" component={HomeScreen} options={getTabOptions('Twensa', true)} />
+      <Tab.Screen name="Chat" component={ChatScreen} options={getTabOptions(strings.tabs.chat, true)} />
+      <Tab.Screen name="Notizie" component={NewsScreen} options={getTabOptions(strings.tabs.news, true)} />
+      <Tab.Screen name="Viaggi" component={TravelScreen} options={getTabOptions(strings.tabs.travel, true)} />
       <Tab.Screen
         name="Lingua"
         component={LanguageScreen}
@@ -151,7 +162,7 @@ const AppTabs = () => {
       <Tab.Screen
         name="Profilo"
         component={ProfileScreen}
-        options={{ tabBarLabel: strings.menu.userProfile }}
+        options={getTabOptions(strings.menu.userProfile, true)}
       />
       <Tab.Screen
         name="AccountSettings"

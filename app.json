@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "TwensAi",
-    "slug": "TwensAi",
+    "name": "Twensa",
+    "slug": "Twensa",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,7 +21,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.momen.ai.TwensAi"
+      "package": "com.momen.ai.Twensa"
     },
     "web": {
      

@@ -27,7 +27,7 @@ const translations = {
       supportDescription: 'Trova i riferimenti per assistenza, contatti e segnalazioni.',
     },
       home: {
-        greeting: 'TwensAi 🇹🇳',
+        greeting: 'Twensa',
         subtitle: 'Notizie, eventi e consigli per la comunità tunisina in Italia',
         featuredNews: 'Notizie in evidenza',
         culturalEvents: 'Eventi culturali',
@@ -40,7 +40,7 @@ const translations = {
     chat: {
       title: 'Chat',
       listTitle: 'Chat recenti',
-      aiTitle: 'TwensAI',
+      aiTitle: 'Twensa AI',
       aiTyping: 'Sto scrivendo...',
       aiError: 'Errore: AI non disponibile in questo momento.',
       aiEmptyState: 'Inizia una conversazione con TwensAI.',
@@ -166,7 +166,7 @@ const translations = {
       supportDescription: 'اعثر على قنوات الدعم والتواصل والإبلاغ.',
     },
     home: {
-      greeting: 'TwensAi 🇹🇳',
+      greeting: 'Twensa',
       subtitle: 'أخبار وفعاليات ونصائح للجالية التونسية في إيطاليا',
       featuredNews: 'أخبار مختارة',
       culturalEvents: 'فعاليات ثقافية',

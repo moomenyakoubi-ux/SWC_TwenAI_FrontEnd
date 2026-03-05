@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
+import TunisiaFlagIcon from './TunisiaFlagIcon';
 
 export const WEB_SIDE_MENU_WIDTH = 380;
 
@@ -56,7 +57,10 @@ const WebSidebar = ({ title, menuStrings, navigation, isRTL }) => {
 
   return (
     <View style={[styles.sideMenu, isRTL && styles.sideMenuRtl, styles.sideMenuWeb]}>
-      <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{title}</Text>
+      <View style={[styles.titleContainer, isRTL && styles.titleContainerRtl]}>
+        <TunisiaFlagIcon size={28} />
+        <Text style={[styles.menuTitle, isRTL && styles.rtlText]}>{title}</Text>
+      </View>
       <View style={styles.menuItems}>
         {getMenuItems(menuStrings).map((item) => {
           const isActive = activeRoute === item.route;
@@ -128,11 +132,19 @@ const createStyles = (appTheme) =>
     sideMenuRtl: {
       alignItems: 'flex-end',
     },
+    titleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: appTheme.spacing.sm,
+      marginTop: Platform.OS === 'android' ? appTheme.spacing.sm : 0,
+    },
+    titleContainerRtl: {
+      flexDirection: 'row-reverse',
+    },
     menuTitle: {
       fontSize: 22,
       fontWeight: '800',
       color: appTheme.colors.text,
-      marginTop: Platform.OS === 'android' ? appTheme.spacing.sm : 0,
     },
     menuItems: {
       gap: appTheme.spacing.sm,

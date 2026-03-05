@@ -86,7 +86,7 @@ const AuthScreen = ({ onForgotPassword }) => {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.startContainer}>
-          <Text style={styles.title}>TwensAi</Text>
+          <Text style={styles.title}>Twensa</Text>
           <Text style={styles.subtitle}>Accedi o crea un account</Text>
           <View style={styles.startActions}>
             <TouchableOpacity style={styles.primaryButton} onPress={() => enterMode('signin')}>
@@ -115,7 +115,7 @@ const AuthScreen = ({ onForgotPassword }) => {
             <View style={styles.headerCopy}>
               <Text style={styles.title}>{mode === 'signup' ? 'Registrati' : 'Accedi'}</Text>
               <Text style={styles.subtitle}>
-                {mode === 'signup' ? 'Crea il tuo account TwensAi' : 'Accedi con email e password'}
+                {mode === 'signup' ? 'Crea il tuo account Twensa' : 'Accedi con email e password'}
               </Text>
             </View>
           </View>
