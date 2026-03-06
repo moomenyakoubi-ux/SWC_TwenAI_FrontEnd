@@ -6,11 +6,14 @@ import { Image, StyleSheet } from 'react-native';
  * Logo che rappresenta Sidi Bou Said con colori blu gradient
  * #0066CC → #00CCFF (tech feel)
  */
-const HomeIcon = ({ size = 40 }) => {
+const HomeIcon = ({ size = 40, color, focused }) => {
+  // Opacità coerente con le altre icone della tab bar
+  const opacity = focused ? 1 : 0.6;
+  
   return (
     <Image
       source={require('../../assets/icon.png')}
-      style={[styles.icon, { width: size, height: size }]}
+      style={[styles.icon, { width: size, height: size, opacity }]}
       resizeMode="contain"
     />
   );
