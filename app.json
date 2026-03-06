@@ -4,14 +4,14 @@
     "slug": "Twensa",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/twensa-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "plugins": [
       "expo-splash-screen"
     ],
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/twensa-splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0066CC"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/twensa-icon.png",
         "backgroundColor": "#0066CC"
       },
       "edgeToEdgeEnabled": true,
