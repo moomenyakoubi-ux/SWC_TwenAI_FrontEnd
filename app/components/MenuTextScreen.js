@@ -12,8 +12,8 @@ const MenuTextScreen = ({ title, description, isRTL = false, backLabel, onBack }
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
-      <Navbar title={title} isRTL={isRTL} onBack={isWeb ? null : onBack} backLabel={backLabel} />
-      <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]}>
+      {!isWeb && <Navbar title={title} isRTL={isRTL} onBack={onBack} backLabel={backLabel} />}
+      <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent, isWeb && styles.webContentNoNav]}>
         <View style={styles.card}>
           <Text style={[styles.title, isRTL && styles.rtlText]}>{title}</Text>
           <Text style={[styles.paragraph, isRTL && styles.rtlText]}>{description}</Text>
@@ -42,6 +42,9 @@ const createStyles = (appTheme) =>
       width: '100%',
       maxWidth: 960,
       alignSelf: 'center',
+    },
+    webContentNoNav: {
+      paddingTop: 80, // Space for hamburger button
     },
     card: {
       backgroundColor: appTheme.colors.card,

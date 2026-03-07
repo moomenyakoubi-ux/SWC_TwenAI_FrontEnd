@@ -174,13 +174,15 @@ const AddContactScreen = () => {
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
-      <Navbar
-        title={menuStrings.addContact}
-        isRTL={isRTL}
-        onBack={isWeb ? null : () => navigation.goBack()}
-        backLabel={strings.tabs.home}
-      />
-      <View style={[styles.container, isWeb && styles.webContainer]}>
+      {!isWeb && (
+        <Navbar
+          title={menuStrings.addContact}
+          isRTL={isRTL}
+          onBack={() => navigation.goBack()}
+          backLabel={strings.tabs.home}
+        />
+      )}
+      <View style={[styles.container, isWeb && styles.webContainer, isWeb && styles.containerNoNav]}>
         <View style={[styles.searchBox, isRTL && styles.rowReverse]}>
           <Ionicons name="search" size={18} color={theme.colors.muted} />
           <TextInput
@@ -286,6 +288,9 @@ const createStyles = (theme) =>
       width: '100%',
       maxWidth: 1100,
       alignSelf: 'center',
+    },
+    containerNoNav: {
+      paddingTop: 80, // Space for hamburger button
     },
     searchBox: {
       flexDirection: 'row',

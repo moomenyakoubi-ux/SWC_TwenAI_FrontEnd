@@ -41,15 +41,21 @@ const SettingRow = ({ icon, label, description, value, onToggle, isRTL, styles, 
 );
 
 const AccountSettingsScreen = () => {
-  const { strings, isRTL } = useLanguage();
+  const { strings, isRTL, language, setLanguage } = useLanguage();
   const { theme: appTheme, isDark, toggleTheme } = useAppTheme();
   const styles = useMemo(() => createStyles(appTheme), [appTheme]);
   const isWeb = Platform.OS === 'web';
   const menuStrings = strings.menu;
+  const { language: languageStrings } = strings;
   const navigation = useNavigation();
   const { user } = useSession();
   const [notifications, setNotifications] = useState(true);
   const [logoutLoading, setLogoutLoading] = useState(false);
+
+  const languageOptions = [
+    { code: 'it', label: languageStrings.italian },
+    { code: 'ar', label: languageStrings.arabic },
+  ];
 
   const handleLogout = async () => {
     if (logoutLoading) return;
@@ -78,14 +84,16 @@ const AccountSettingsScreen = () => {
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
-      <Navbar
-        title={menuStrings.accountSettings}
-        isRTL={isRTL}
-        onBack={isWeb ? null : () => navigation.navigate('Home')}
-        backLabel={strings.tabs.home}
-      />
+      {!isWeb && (
+        <Navbar
+          title={menuStrings.accountSettings}
+          isRTL={isRTL}
+          onBack={() => navigation.navigate('Home')}
+          backLabel={strings.tabs.home}
+        />
+      )}
       <ScrollView
-        contentContainerStyle={[styles.content, isWeb && styles.webContent]}
+        contentContainerStyle={[styles.content, isWeb && styles.webContent, isWeb && styles.webContentNoNav]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
@@ -110,6 +118,38 @@ const AccountSettingsScreen = () => {
             styles={styles}
             appTheme={appTheme}
           />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>{languageStrings.title}</Text>
+          <View style={[styles.languageOptions, isRTL && styles.rowReverse]}>
+            {languageOptions.map((option) => {
+              const isActive = option.code === language;
+              return (
+                <TouchableOpacity
+                  key={option.code}
+                  style={[
+                    styles.languageOption,
+                    isActive && styles.languageOptionActive,
+                  ]}
+                  onPress={() => setLanguage(option.code)}
+                >
+                  <Text
+                    style={[
+                      styles.languageOptionLabel,
+                      isActive && styles.languageOptionLabelActive,
+                      isRTL && styles.rtlText,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={[styles.helper, isRTL && styles.rtlText]}>
+            {languageStrings.currentLabel}: {language === 'it' ? languageStrings.italian : languageStrings.arabic}
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -172,6 +212,9 @@ const createStyles = (appTheme) =>
       width: '100%',
       maxWidth: 1100,
       alignSelf: 'center',
+    },
+    webContentNoNav: {
+      paddingTop: 80, // Space for hamburger button
     },
     card: {
       backgroundColor: appTheme.colors.card,
@@ -274,6 +317,37 @@ const createStyles = (appTheme) =>
     },
     settingIconRtl: {
       transform: [{ scaleX: -1 }],
+    },
+    languageOptions: {
+      flexDirection: 'row',
+      gap: appTheme.spacing.md,
+    },
+    languageOption: {
+      flex: 1,
+      paddingVertical: appTheme.spacing.lg,
+      borderRadius: appTheme.radius.lg,
+      borderWidth: 1,
+      borderColor: appTheme.colors.secondary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: appTheme.colors.card,
+    },
+    languageOptionActive: {
+      backgroundColor: appTheme.colors.secondary,
+    },
+    languageOptionLabel: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: appTheme.colors.secondary,
+      textAlign: 'center',
+    },
+    languageOptionLabelActive: {
+      color: appTheme.colors.card,
+    },
+    helper: {
+      marginTop: appTheme.spacing.md,
+      fontSize: 14,
+      color: appTheme.colors.muted,
     },
   });
 

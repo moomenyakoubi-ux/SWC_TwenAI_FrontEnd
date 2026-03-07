@@ -771,7 +771,7 @@ const ProfileScreen = () => {
                   <Text style={[styles.languageValue, isRTL && styles.rtlText]}>{currentLanguageLabel}</Text>
                   <TouchableOpacity
                     style={styles.languageButton}
-                    onPress={() => navigation.navigate('Lingua')}
+                    onPress={() => navigation.navigate('AccountSettings')}
                   >
                     <Ionicons name="globe" size={16} color={theme.colors.card} />
                     <Text style={styles.languageButtonText}>Cambia lingua</Text>

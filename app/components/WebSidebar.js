@@ -9,7 +9,6 @@ const ANIMATION_DURATION = 350;
 const getMenuItems = (menuStrings) => [
   { label: menuStrings.addContact, icon: 'person-add', route: 'AddContact' },
   { label: menuStrings.accountSettings, icon: 'settings', route: 'AccountSettings' },
-  { label: menuStrings.language, icon: 'globe', route: 'Lingua' },
   { label: menuStrings.privacy, icon: 'shield-checkmark', route: 'PrivacyPolicy' },
   { label: menuStrings.terms, icon: 'document-text', route: 'Termini' },
   { label: menuStrings.copyright, icon: 'ribbon', route: 'Copyright' },
