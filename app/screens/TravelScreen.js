@@ -1189,10 +1189,26 @@ const TravelScreen = ({ navigation }) => {
     return (
       <View style={{ flex: 1 }}>
         <TouchableOpacity
-          style={[styles.backButton, isRTL && styles.backButtonRtl]}
+          style={[
+            styles.backButtonUnified, 
+            isRTL && styles.backButtonUnifiedRtl,
+            isWeb && styles.backButtonUnifiedWeb
+          ]}
           onPress={() => setTravelMode(null)}
+          activeOpacity={0.8}
         >
-          <Text style={styles.backButtonText}>← {travelStrings?.back || 'Indietro'}</Text>
+          <LinearGradient
+            colors={['#0066CC', '#00CCFF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.backButtonGradient}
+          >
+            <Ionicons
+              name={isRTL ? 'chevron-forward' : 'chevron-back'}
+              size={20}
+              color="#FFFFFF"
+            />
+          </LinearGradient>
         </TouchableOpacity>
         <ComingSoonScreen
           title={travelStrings?.ferries || 'Traghetti'}
@@ -1213,10 +1229,26 @@ const TravelScreen = ({ navigation }) => {
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.overlay, isWeb && styles.overlayWeb]}>
           <TouchableOpacity
-            style={[styles.backButtonFloating, isRTL && styles.backButtonFloatingRtl]}
+            style={[
+              styles.backButtonUnified, 
+              isRTL && styles.backButtonUnifiedRtl,
+              isWeb && styles.backButtonUnifiedWeb
+            ]}
             onPress={() => setTravelMode(null)}
+            activeOpacity={0.8}
           >
-            <Text style={styles.backButtonFloatingText}>← {travelStrings?.back || 'Indietro'}</Text>
+            <LinearGradient
+              colors={['#0066CC', '#00CCFF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.backButtonGradient}
+            >
+              <Ionicons
+                name={isRTL ? 'chevron-forward' : 'chevron-back'}
+                size={20}
+                color="#FFFFFF"
+              />
+            </LinearGradient>
           </TouchableOpacity>
           <FlatList
             ref={flatListRef}
@@ -1225,7 +1257,11 @@ const TravelScreen = ({ navigation }) => {
             extraData={{ isFetching, sortOrder, maxStops, listResetKey, visibleLen: visibleResults.length }}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderTrip}
-            contentContainerStyle={[styles.list, isWeb && styles.webList]}
+            contentContainerStyle={[
+              styles.list, 
+              isWeb && styles.webList,
+              !isWeb && styles.listContentPadding
+            ]}
             ListHeaderComponent={
               <View style={[styles.filtersContainer, isWeb && styles.filtersWeb]}>
 
@@ -1465,48 +1501,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.muted,
   },
-  backButton: {
+  backButtonUnified: {
     position: 'absolute',
-    top: 50,
+    top: Platform.OS === 'ios' ? 60 : 40,
     left: 20,
     zIndex: 100,
-    backgroundColor: theme.colors.card,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
     ...theme.shadow.card,
   },
-  backButtonRtl: {
+  backButtonUnifiedRtl: {
     left: 'auto',
     right: 20,
   },
-  backButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.primary,
+  backButtonUnifiedWeb: {
+    left: WEB_TAB_BAR_WIDTH + 20,
   },
-  backButtonFloating: {
-    position: 'absolute',
-    top: 8,
-    left: theme.spacing.lg,
-    zIndex: 100,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+  backButtonGradient: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backButtonFloatingRtl: {
-    left: 'auto',
-    right: theme.spacing.lg,
-  },
-  backButtonFloatingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.primary,
+  // Spazio per il contenuto sotto il bottone indietro
+  listContentPadding: {
+    paddingTop: Platform.OS === 'ios' ? 100 : 80,
   },
   // Original styles
   background: {

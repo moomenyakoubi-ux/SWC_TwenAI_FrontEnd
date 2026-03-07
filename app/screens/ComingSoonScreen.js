@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import theme from '../styles/theme';
+import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 
 const ComingSoonScreen = ({ title, icon = 'construct', onBack }) => {
   const { strings, isRTL } = useLanguage();
@@ -13,7 +14,11 @@ const ComingSoonScreen = ({ title, icon = 'construct', onBack }) => {
     <View style={styles.container}>
       {onBack && (
         <TouchableOpacity
-          style={[styles.backButton, isRTL && styles.backButtonRtl]}
+          style={[
+            styles.backButton, 
+            isRTL && styles.backButtonRtl,
+            isWeb && styles.backButtonWeb
+          ]}
           onPress={onBack}
           activeOpacity={0.8}
         >
@@ -77,6 +82,9 @@ const styles = StyleSheet.create({
   backButtonRtl: {
     left: 'auto',
     right: 20,
+  },
+  backButtonWeb: {
+    left: WEB_TAB_BAR_WIDTH + 20,
   },
   backButtonGradient: {
     width: 44,
