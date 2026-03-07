@@ -1,16 +1,40 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import theme from '../styles/theme';
 
-const ComingSoonScreen = ({ title, icon = 'construct' }) => {
+const ComingSoonScreen = ({ title, icon = 'construct', onBack }) => {
   const { strings, isRTL } = useLanguage();
   const isWeb = Platform.OS === 'web';
 
   return (
     <View style={styles.container}>
+      {onBack && (
+        <TouchableOpacity
+          style={[styles.backButton, isRTL && styles.backButtonRtl]}
+          onPress={onBack}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={['#0066CC', '#00CCFF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.backButtonGradient}
+          >
+            <Ionicons
+              name={isRTL ? 'chevron-forward' : 'chevron-back'}
+              size={22}
+              color="#FFFFFF"
+            />
+            <Text style={styles.backButtonText}>
+              {strings.common?.back || 'Indietro'}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
       <LinearGradient
         colors={['#0066CC', '#00CCFF']}
         start={{ x: 0, y: 0 }}
@@ -44,6 +68,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.xl,
+  },
+  backButton: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 20 : 50,
+    left: 20,
+    zIndex: 100,
+    ...theme.shadow.card,
+  },
+  backButtonRtl: {
+    left: 'auto',
+    right: 20,
+  },
+  backButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   iconContainer: {
     width: 100,
