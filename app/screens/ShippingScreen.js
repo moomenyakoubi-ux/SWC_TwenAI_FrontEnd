@@ -48,7 +48,6 @@ const ShippingMenu = ({ navigation, isWeb, isRTL, strings, menuStrings }) => {
       <ComingSoonScreen
         title={strings.shipping?.packageShipping || 'Spedizione Pacchi'}
         icon="cube"
-        onBack={() => setSelectedOption(null)}
       />
     );
   }
@@ -58,7 +57,6 @@ const ShippingMenu = ({ navigation, isWeb, isRTL, strings, menuStrings }) => {
       <ComingSoonScreen
         title={strings.shipping?.moneyShipping || 'Spedizione Soldi'}
         icon="cash"
-        onBack={() => setSelectedOption(null)}
       />
     );
   }
