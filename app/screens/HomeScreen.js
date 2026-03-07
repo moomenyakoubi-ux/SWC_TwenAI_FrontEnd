@@ -433,8 +433,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </Animated.View>
         ) : null}
-      </View>
-    </ImageBackground>
+    </View>
   );
 };
 

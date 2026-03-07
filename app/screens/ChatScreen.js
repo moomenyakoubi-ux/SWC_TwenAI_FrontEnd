@@ -772,7 +772,6 @@ const ChatScreen = ({ navigation, route }) => {
           navigation={navigation}
           isRTL={isRTL}
         />
-      </View>
     </View>
   );
 };
