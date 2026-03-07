@@ -39,7 +39,7 @@ const LanguageScreen = () => {
       <Navbar
         title={languageStrings.title}
         isRTL={isRTL}
-        onBack={() => navigation.navigate('Home')}
+        onBack={isWeb ? null : () => navigation.navigate('Home')}
         backLabel={strings.tabs.home}
       />
       <View style={[styles.container, isWeb && styles.webContainer]}>

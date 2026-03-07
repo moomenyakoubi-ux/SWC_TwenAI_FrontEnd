@@ -12,7 +12,7 @@ const MenuTextScreen = ({ title, description, isRTL = false, backLabel, onBack }
 
   return (
     <SafeAreaView style={[styles.safeArea, isWeb && styles.webSafeArea]}>
-      <Navbar title={title} isRTL={isRTL} onBack={onBack} backLabel={backLabel} />
+      <Navbar title={title} isRTL={isRTL} onBack={isWeb ? null : onBack} backLabel={backLabel} />
       <ScrollView contentContainerStyle={[styles.content, isWeb && styles.webContent]}>
         <View style={styles.card}>
           <Text style={[styles.title, isRTL && styles.rtlText]}>{title}</Text>

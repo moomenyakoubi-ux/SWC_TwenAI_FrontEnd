@@ -155,11 +155,7 @@ const WebSidebar = ({ menuStrings, navigation, isRTL }) => {
     outputRange: ['0deg', '180deg'],
   });
   
-  // RTL slide interpolation - must use explicit interpolation for negative values
-  const slideAnimRtl = slideAnim.interpolate({
-    inputRange: [0, MENU_WIDTH],
-    outputRange: [0, -MENU_WIDTH],
-  });
+
 
   return (
     <>
@@ -252,12 +248,11 @@ const WebSidebar = ({ menuStrings, navigation, isRTL }) => {
         </TouchableOpacity>
       )}
 
-      {/* Morphing Slide-out Menu */}
+      {/* Morphing Slide-out Menu - ALWAYS on the right */}
       <Animated.View
         style={[
           styles.sideMenu,
-          isRTL && styles.sideMenuRtl,
-          { transform: [{ translateX: isRTL ? slideAnimRtl : slideAnim }] },
+          { transform: [{ translateX: slideAnim }] },
         ]}
       >
         {/* Menu Header - Solo bottone chiusura */}
@@ -413,11 +408,7 @@ const createStyles = (appTheme) =>
       shadowRadius: 30,
       elevation: 15,
     },
-    sideMenuRtl: {
-      right: undefined,
-      left: 0,
-      shadowOffset: { width: 8, height: 0 },
-    },
+
 
     // Menu Header
     menuHeader: {

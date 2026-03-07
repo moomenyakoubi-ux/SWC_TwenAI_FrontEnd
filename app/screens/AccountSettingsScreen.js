@@ -81,7 +81,7 @@ const AccountSettingsScreen = () => {
       <Navbar
         title={menuStrings.accountSettings}
         isRTL={isRTL}
-        onBack={() => navigation.navigate('Home')}
+        onBack={isWeb ? null : () => navigation.navigate('Home')}
         backLabel={strings.tabs.home}
       />
       <ScrollView

@@ -177,7 +177,7 @@ const AddContactScreen = () => {
       <Navbar
         title={menuStrings.addContact}
         isRTL={isRTL}
-        onBack={() => navigation.goBack()}
+        onBack={isWeb ? null : () => navigation.goBack()}
         backLabel={strings.tabs.home}
       />
       <View style={[styles.container, isWeb && styles.webContainer]}>
