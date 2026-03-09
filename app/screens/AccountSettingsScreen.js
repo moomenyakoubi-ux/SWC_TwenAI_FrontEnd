@@ -70,6 +70,8 @@ const AccountSettingsScreen = () => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [showEmailSuccessModal, setShowEmailSuccessModal] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState('');
 
   const languageOptions = [
     { code: 'it', label: languageStrings.italian },
@@ -198,15 +200,12 @@ const AccountSettingsScreen = () => {
         return;
       }
       
-      // Success
+      // Success - show modal with the new email address
+      setPendingEmail(trimmedEmail);
       setShowEmailModal(false);
       setNewEmail('');
       setCurrentPassword('');
-      Alert.alert(
-        menuStrings.emailChangeSuccessTitle || 'Email aggiornata!',
-        menuStrings.emailChangeSuccessMessage || 'Controlla la tua nuova casella email per confermare il cambio.',
-        [{ text: menuStrings.gotIt || 'Ho capito' }]
-      );
+      setShowEmailSuccessModal(true);
     } catch (err) {
       setEmailError(err?.message || menuStrings.emailChangeError || 'Errore durante il cambio email');
     } finally {
@@ -531,6 +530,47 @@ const AccountSettingsScreen = () => {
         </View>
       </Modal>
 
+      {/* Email Change Success Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showEmailSuccessModal}
+        onRequestClose={() => setShowEmailSuccessModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isRTL && styles.rtlText]}>
+            <View style={styles.modalIconContainer}>
+              <View style={[styles.modalIconCircle, { backgroundColor: appTheme.colors.secondary }]}>
+                <Ionicons name="mail" size={40} color="#fff" />
+              </View>
+            </View>
+            
+            <Text style={[styles.modalTitle, isRTL && styles.rtlText]}>
+              {menuStrings.emailChangeSuccessTitle || 'Email inviata!'}
+            </Text>
+            
+            <Text style={[styles.modalDescription, isRTL && styles.rtlText]}>
+              {menuStrings.emailChangeSuccessMessage || 'Abbiamo inviato un link di conferma a'} {'\n'}
+              <Text style={[styles.modalHighlightText, { color: appTheme.colors.secondary }]}>
+                {pendingEmail}
+              </Text>
+              {'\n\n'}
+              {menuStrings.emailChangeCheckInbox || 'Controlla la tua casella di posta e clicca sul link per completare il cambio.'}
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: appTheme.colors.secondary }]}
+              onPress={() => setShowEmailSuccessModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>
+                {menuStrings.gotIt || 'Ho capito'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Password Reset Success Modal */}
       <Modal
         animationType="fade"
@@ -705,10 +745,11 @@ const createStyles = (appTheme) =>
       backgroundColor: appTheme.colors.primary,
       borderWidth: 0,
       borderColor: 'transparent',
-      boxShadow: '0 10px 24px rgba(215,35,35,0.2)',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
       cursor: 'pointer',
       minWidth: 160,
       maxWidth: 200,
+      transition: 'all 200ms ease-out',
     },
     logoutText: {
       color: appTheme.colors.card,
@@ -866,6 +907,10 @@ const createStyles = (appTheme) =>
       color: '#fff',
       fontSize: 16,
       fontWeight: '700',
+    },
+    modalHighlightText: {
+      fontWeight: '700',
+      fontSize: 16,
     },
     
     // Email Modal specific styles
