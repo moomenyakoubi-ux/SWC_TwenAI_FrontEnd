@@ -433,7 +433,7 @@ const createStyles = (appTheme) =>
     menuItems: {
       flex: 1,
       paddingHorizontal: appTheme.spacing.md,
-      paddingTop: appTheme.spacing.lg,
+      paddingTop: appTheme.spacing.xs,
       gap: appTheme.spacing.sm,
     },
     menuItem: {
