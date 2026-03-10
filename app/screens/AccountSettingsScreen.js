@@ -538,7 +538,7 @@ const AccountSettingsScreen = () => {
         onRequestClose={() => setShowEmailSuccessModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isRTL && styles.rtlText]}>
+          <View style={[styles.modalContent, styles.emailSuccessModalContent, isRTL && styles.rtlText]}>
             <View style={styles.modalIconContainer}>
               <View style={[styles.modalIconCircle, { backgroundColor: appTheme.colors.secondary }]}>
                 <Ionicons name="mail" size={40} color="#fff" />
@@ -557,6 +557,22 @@ const AccountSettingsScreen = () => {
               {'\n\n'}
               {menuStrings.emailChangeCheckInbox || 'Controlla la tua casella di posta e clicca sul link per completare il cambio.'}
             </Text>
+
+            {/* Secure email change warning */}
+            <View style={[styles.secureNoteContainer, isRTL && styles.rowReverse]}>
+              <Ionicons name="shield-checkmark-outline" size={20} color={appTheme.colors.secondary} />
+              <Text style={[styles.secureNoteText, isRTL && styles.rtlText]}>
+                {menuStrings.emailChangeSecureNote || 'Per motivi di sicurezza, potrebbe essere necessario confermare il cambio anche dalla vecchia email.'}
+              </Text>
+            </View>
+
+            {/* Check old inbox reminder */}
+            <View style={[styles.oldEmailContainer, isRTL && styles.rowReverse]}>
+              <Ionicons name="mail-unread-outline" size={20} color={appTheme.colors.muted} />
+              <Text style={[styles.oldEmailText, isRTL && styles.rtlText]}>
+                {menuStrings.emailChangeCheckOldInbox || 'Controlla anche la vecchia email'}
+              </Text>
+            </View>
             
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: appTheme.colors.secondary }]}
@@ -911,6 +927,37 @@ const createStyles = (appTheme) =>
     modalHighlightText: {
       fontWeight: '700',
       fontSize: 16,
+    },
+    emailSuccessModalContent: {
+      maxWidth: 380,
+    },
+    secureNoteContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      backgroundColor: 'rgba(0, 102, 204, 0.08)',
+      padding: 12,
+      borderRadius: 10,
+      marginBottom: 12,
+      width: '100%',
+    },
+    secureNoteText: {
+      flex: 1,
+      fontSize: 13,
+      color: appTheme.colors.text,
+      lineHeight: 18,
+    },
+    oldEmailContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 16,
+      paddingHorizontal: 4,
+    },
+    oldEmailText: {
+      flex: 1,
+      fontSize: 13,
+      color: appTheme.colors.muted,
     },
     
     // Email Modal specific styles
