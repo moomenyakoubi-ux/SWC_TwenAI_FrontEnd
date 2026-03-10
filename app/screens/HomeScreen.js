@@ -103,6 +103,7 @@ const HomeScreen = ({ navigation }) => {
   const feedOffsetRef = useRef(0);
   const hasMoreFeedRef = useRef(true);
   const feedItemsCountRef = useRef(0);
+  const flatListRef = useRef(null);
   const eventNewsDetailTarget = useMemo(() => resolveEventNewsDetailNavigation(navigation), [navigation]);
   const hasEventNewsDetailRoute = Boolean(eventNewsDetailTarget?.routeName);
 
@@ -203,6 +204,10 @@ const HomeScreen = ({ navigation }) => {
 
   useFocusEffect(
     React.useCallback(() => {
+      // Reset scroll position when screen comes into focus
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+      }
       loadHomeFeed({ reset: true, silent: true });
     }, [loadHomeFeed]),
   );
@@ -360,6 +365,7 @@ const HomeScreen = ({ navigation }) => {
         )}
 
         <FlatList
+          ref={flatListRef}
           data={homeFeedItems}
           keyExtractor={keyExtractor}
           renderItem={renderFeedItem}
