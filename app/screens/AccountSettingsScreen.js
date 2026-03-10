@@ -775,7 +775,7 @@ const createStyles = (appTheme) =>
     },
     dropdownContainer: {
       position: 'relative',
-      zIndex: 10,
+      zIndex: 9999,
     },
     dropdownTrigger: {
       flexDirection: 'row',
