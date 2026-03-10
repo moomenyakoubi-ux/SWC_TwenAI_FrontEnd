@@ -276,7 +276,7 @@ const AccountSettingsScreen = () => {
           />
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, languageDropdownOpen && { zIndex: 10 }]}>
           <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>{languageStrings.title}</Text>
           
           {/* Language Dropdown */}
