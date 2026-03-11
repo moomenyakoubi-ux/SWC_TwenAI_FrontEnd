@@ -19,6 +19,7 @@ import PostCard from '../components/PostCard';
 import OfficialPostCard from '../components/OfficialPostCard';
 import SponsoredCard from '../components/SponsoredCard';
 import EventNewsCard from '../components/EventNewsCard';
+import NotificationsSummary from '../components/NotificationsSummary';
 import theme from '../styles/theme';
 import { GradientButton } from '../components/GradientButton';
 import { useLanguage } from '../context/LanguageContext';
@@ -300,6 +301,8 @@ const HomeScreen = ({ navigation }) => {
       <View>
         {/* Spazio iniziale per web */}
         {isWeb && <View style={styles.webTopSpacer} />}
+        {/* Riepilogo notifiche recenti */}
+        <NotificationsSummary isRTL={isRTL} maxItems={5} />
         <SectionHeader title={homeStrings.communityPosts} isRTL={isRTL} />
         {homeFeedError && homeFeedItems.length > 0 ? (
           <View style={styles.feedErrorBox}>

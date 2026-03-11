@@ -65,6 +65,15 @@ const translations = {
         travelTip: 'Suggerimento di viaggio',
         chatCta: 'Apri la chat AI',
       },
+      notifications: {
+        title: 'Notifiche',
+        viewAll: 'Vedi tutte',
+        error: 'Errore caricamento',
+        retry: 'Riprova',
+        justNow: 'Adesso',
+        empty: 'Nessuna notifica',
+        markAsRead: 'Segna come letta',
+      },
     chat: {
       title: 'Chat',
       listTitle: 'Chat recenti',
@@ -231,6 +240,15 @@ const translations = {
       travel: 'السفر',
       travelTip: 'نصيحة سفر',
       chatCta: 'افتح محادثة الذكاء الاصطناعي',
+    },
+    notifications: {
+      title: 'الإشعارات',
+      viewAll: 'عرض الكل',
+      error: 'خطأ في التحميل',
+      retry: 'إعادة المحاولة',
+      justNow: 'الآن',
+      empty: 'لا توجد إشعارات',
+      markAsRead: 'تحديد كمقروءة',
     },
     chat: {
       title: 'المحادثات',
