@@ -26,6 +26,11 @@ import { WEB_TAB_BAR_WIDTH } from '../components/WebTabBar';
 import { WEB_SIDE_MENU_WIDTH } from '../components/WebSidebar';
 import useSession from '../auth/useSession';
 import useProfile from '../profile/useProfile';
+import { 
+  getNotificationPreferences, 
+  updateNotificationPreferences,
+  unregisterPushToken 
+} from '../services/pushNotificationService';
 
 const SettingRow = ({ icon, label, description, value, onToggle, isRTL, styles, appTheme }) => (
   <View style={[styles.settingRow, isRTL && styles.rowReverse]}>
@@ -55,8 +60,19 @@ const AccountSettingsScreen = () => {
   const navigation = useNavigation();
   const { user } = useSession();
   const { profile, updateProfile, loading: profileLoading } = useProfile();
-  const [notifications, setNotifications] = useState(true);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  
+  // Notification preferences states
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    messages_enabled: true,
+    likes_enabled: true,
+    comments_enabled: true,
+    follows_enabled: true,
+    quiet_hours_start: null,
+    quiet_hours_end: null,
+  });
+  const [loadingPrefs, setLoadingPrefs] = useState(false);
+  const [savingPref, setSavingPref] = useState(null); // 'messages', 'likes', 'comments', 'follows'
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [fullName, setFullName] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -88,6 +104,22 @@ const AccountSettingsScreen = () => {
       setFullName(profile.full_name);
     }
   }, [profile?.full_name]);
+
+  // Load notification preferences
+  useEffect(() => {
+    async function loadPreferences() {
+      setLoadingPrefs(true);
+      const prefs = await getNotificationPreferences();
+      if (prefs) {
+        setNotificationPrefs(prefs);
+      }
+      setLoadingPrefs(false);
+    }
+    
+    if (user) {
+      loadPreferences();
+    }
+  }, [user]);
 
   const handleSaveFullName = async () => {
     const trimmed = fullName.trim();
@@ -213,10 +245,30 @@ const AccountSettingsScreen = () => {
     }
   };
 
+  const handleToggleNotificationPref = async (key) => {
+    setSavingPref(key);
+    const newValue = !notificationPrefs[key];
+    const updated = { ...notificationPrefs, [key]: newValue };
+    
+    // Optimistic update
+    setNotificationPrefs(updated);
+    
+    const success = await updateNotificationPreferences({ [key]: newValue });
+    if (!success) {
+      // Revert on error
+      setNotificationPrefs(notificationPrefs);
+      Alert.alert('Errore', 'Impossibile aggiornare le preferenze');
+    }
+    setSavingPref(null);
+  };
+
   const handleLogout = async () => {
     if (logoutLoading) return;
     setLogoutLoading(true);
     try {
+      // Unregister push token before logout
+      await unregisterPushToken();
+      
       const options = isWeb ? { scope: 'local' } : undefined;
       const { error } = await signOut(options);
       if (error) {
@@ -253,17 +305,60 @@ const AccountSettingsScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.card}>
-          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Preferenze</Text>
-          <SettingRow
-            icon="notifications"
-            label="Notifiche push"
-            description="Aggiornamenti su chat, eventi e nuovi contatti."
-            value={notifications}
-            onToggle={() => setNotifications((prev) => !prev)}
-            isRTL={isRTL}
-            styles={styles}
-            appTheme={appTheme}
-          />
+          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Notifiche</Text>
+          {loadingPrefs ? (
+            <View style={[styles.loadingRow, isRTL && styles.rowReverse]}>
+              <ActivityIndicator size="small" color={appTheme.colors.secondary} />
+              <Text style={[styles.loadingText, isRTL && styles.rtlText]}>Caricamento...</Text>
+            </View>
+          ) : (
+            <>
+              <SettingRow
+                icon="chatbubble-ellipses"
+                label="Messaggi"
+                description="Ricevi notifiche quando ti arrivano messaggi privati"
+                value={notificationPrefs.messages_enabled}
+                onToggle={() => handleToggleNotificationPref('messages_enabled')}
+                isRTL={isRTL}
+                styles={styles}
+                appTheme={appTheme}
+              />
+              <SettingRow
+                icon="heart"
+                label="Like"
+                description="Ricevi notifiche quando qualcuno mette like ai tuoi post"
+                value={notificationPrefs.likes_enabled}
+                onToggle={() => handleToggleNotificationPref('likes_enabled')}
+                isRTL={isRTL}
+                styles={styles}
+                appTheme={appTheme}
+              />
+              <SettingRow
+                icon="chatbox-ellipses"
+                label="Commenti"
+                description="Ricevi notifiche quando qualcuno commenta i tuoi post"
+                value={notificationPrefs.comments_enabled}
+                onToggle={() => handleToggleNotificationPref('comments_enabled')}
+                isRTL={isRTL}
+                styles={styles}
+                appTheme={appTheme}
+              />
+              <SettingRow
+                icon="people"
+                label="Nuovi follower"
+                description="Ricevi notifiche quando qualcuno inizia a seguirti"
+                value={notificationPrefs.follows_enabled}
+                onToggle={() => handleToggleNotificationPref('follows_enabled')}
+                isRTL={isRTL}
+                styles={styles}
+                appTheme={appTheme}
+              />
+            </>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={[styles.sectionTitle, isRTL && styles.rtlText]}>Aspetto</Text>
           <SettingRow
             icon="moon"
             label="Tema scuro"
@@ -1021,6 +1116,16 @@ const createStyles = (appTheme) =>
     modalButtonSecondaryText: {
       fontSize: 15,
       fontWeight: '700',
+    },
+    loadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    loadingText: {
+      color: appTheme.colors.muted,
+      fontSize: 14,
     },
   });
 

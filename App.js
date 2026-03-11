@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StatusBar, View } from 'react-native';
 import { NavigationContainer, DefaultTheme as NavigationTheme, useNavigation } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -39,6 +39,12 @@ import useSession from './app/auth/useSession';
 import useProfile from './app/profile/useProfile';
 import ErrorBoundary from './app/components/ErrorBoundary';
 import { isUpdatePasswordLink } from './app/utils/authRedirect';
+import { 
+  registerForPushNotificationsAsync, 
+  registerPushToken,
+  setupNotificationListeners 
+} from './app/services/pushNotificationService';
+import * as Notifications from 'expo-notifications';
 
 const sharedBackgroundAsset = require('./app/images/image1.png');
 const chatBackgroundAsset = require('./app/images/image2.png');
@@ -80,11 +86,55 @@ const replaceAuthPath = (route) => {
   window.history.replaceState({}, '', nextPath);
 };
 
-const AppTabs = () => {
+const AppTabs = ({ navigationRef }) => {
   const { strings, isRTL } = useLanguage();
   const { theme: appTheme } = useAppTheme();
   const isWeb = Platform.OS === 'web';
   const navigation = useNavigation();
+  
+  // Setup notifiche push
+  useEffect(() => {
+    async function setupPush() {
+      const token = await registerForPushNotificationsAsync();
+      if (token) {
+        await registerPushToken(token);
+      }
+    }
+    
+    setupPush();
+    
+    // Setup listeners per navigazione da notifica
+    const cleanup = setupNotificationListeners(navigationRef);
+    
+    // Controlla se app è stata aperta da una notifica
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response?.notification) {
+        const data = response.notification.request.content.data;
+        if (data && navigationRef?.current) {
+          setTimeout(() => {
+            switch (data.type) {
+              case 'message':
+                navigationRef.current.navigate('Chat', { conversationId: data.conversationId });
+                break;
+              case 'like':
+              case 'comment':
+                if (data.actorId) {
+                  navigationRef.current.navigate('PublicProfile', { profileId: data.actorId });
+                }
+                break;
+              case 'follow':
+                if (data.followerId) {
+                  navigationRef.current.navigate('PublicProfile', { profileId: data.followerId });
+                }
+                break;
+            }
+          }, 1000);
+        }
+      }
+    });
+    
+    return cleanup;
+  }, []);
   const hiddenTabOptions = {
     tabBarButton: () => null,
     tabBarStyle: { display: 'none' },
@@ -232,6 +282,8 @@ const AppTabs = () => {
 
 const MainApp = () => {
   const { theme: appTheme, isDark } = useAppTheme();
+  const navigationRef = useRef();
+  
   const navigationTheme = useMemo(
     () => ({
       ...NavigationTheme,
@@ -250,9 +302,9 @@ const MainApp = () => {
   );
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      <AppTabs />
+      <AppTabs navigationRef={navigationRef} />
     </NavigationContainer>
   );
 };
