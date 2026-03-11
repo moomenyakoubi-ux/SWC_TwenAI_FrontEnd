@@ -100,22 +100,34 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
       setError(null);
 
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('[Notifications] Session:', session ? 'Present' : 'Missing');
+      
       if (!session?.access_token) {
+        console.log('[Notifications] No session, skipping fetch');
         setLoading(false);
         return;
       }
 
-      const response = await fetch(`${API_BASE}/api/notifications?limit=${maxItems}`, {
+      const url = `${API_BASE}/api/notifications?limit=${maxItems}`;
+      console.log('[Notifications] Fetching from:', url);
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
 
+      console.log('[Notifications] Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch notifications');
+        const errorText = await response.text();
+        console.error('[Notifications] Error response:', errorText);
+        throw new Error(`Failed to fetch notifications: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('[Notifications] Data received:', JSON.stringify(data));
+      
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
     } catch (err) {
