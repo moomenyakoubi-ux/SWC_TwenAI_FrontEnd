@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -51,38 +52,62 @@ const formatTimeAgo = (dateString, strings) => {
   return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 };
 
-const NotificationItem = ({ notification, isRTL, strings, onPress }) => {
+// Componente per notifica con animazione di entrata
+const AnimatedNotificationItem = ({ notification, isRTL, strings, onPress, isNew }) => {
   const type = notification.type || 'default';
   const icon = NOTIFICATION_ICONS[type] || NOTIFICATION_ICONS.default;
   const iconColor = NOTIFICATION_COLORS[type] || NOTIFICATION_COLORS.default;
   const isUnread = !notification.read;
+  
+  // Animazione per nuove notifiche
+  const fadeAnim = useRef(new Animated.Value(isNew ? 0 : 1)).current;
+  const slideAnim = useRef(new Animated.Value(isNew ? -20 : 0)).current;
+  
+  useEffect(() => {
+    if (isNew) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isNew]);
 
   return (
-    <Pressable
-      style={[styles.notificationItem, isRTL && styles.notificationItemRtl]}
-      onPress={onPress}
-      android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
-    >
-      <View style={[styles.iconWrapper, { backgroundColor: `${iconColor}15` }]}>
-        <Ionicons name={icon} size={18} color={iconColor} />
-      </View>
-      <View style={styles.notificationContent}>
-        <Text
-          style={[
-            styles.notificationText,
-            isRTL && styles.rtlText,
-            isUnread && styles.unreadText,
-          ]}
-          numberOfLines={2}
-        >
-          {notification.message || notification.body}
-        </Text>
-        <Text style={[styles.timeText, isRTL && styles.rtlText]}>
-          {formatTimeAgo(notification.created_at, strings)}
-        </Text>
-      </View>
-      {isUnread && <View style={styles.unreadDot} />}
-    </Pressable>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      <Pressable
+        style={[styles.notificationItem, isRTL && styles.notificationItemRtl]}
+        onPress={onPress}
+        android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+      >
+        <View style={[styles.iconWrapper, { backgroundColor: `${iconColor}15` }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+        <View style={styles.notificationContent}>
+          <Text
+            style={[
+              styles.notificationText,
+              isRTL && styles.rtlText,
+              isUnread && styles.unreadText,
+            ]}
+            numberOfLines={2}
+          >
+            {notification.message || notification.body}
+          </Text>
+          <Text style={[styles.timeText, isRTL && styles.rtlText]}>
+            {formatTimeAgo(notification.created_at, strings)}
+          </Text>
+        </View>
+        {isUnread && <View style={styles.unreadDot} />}
+      </Pressable>
+    </Animated.View>
   );
 };
 
@@ -90,26 +115,32 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
   const navigation = useNavigation();
   const { strings } = useLanguage();
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState(null);
+  
+  // Track previous notifications to detect new ones
+  const prevNotificationsRef = useRef([]);
+  const [newIds, setNewIds] = useState(new Set());
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (showLoading = false) => {
     try {
-      setLoading(true);
+      // Solo per refresh manuale o primo caricamento mostriamo stato loading
+      if (showLoading && notifications.length === 0) {
+        setIsInitialLoading(true);
+      }
+      
       setError(null);
 
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('[Notifications] Session:', session ? 'Present' : 'Missing');
       
       if (!session?.access_token) {
-        console.log('[Notifications] No session, skipping fetch');
-        setLoading(false);
+        setIsInitialLoading(false);
         return;
       }
 
       const url = `${API_BASE}/api/notifications?limit=${maxItems}`;
-      console.log('[Notifications] Fetching from:', url);
       
       const response = await fetch(url, {
         headers: {
@@ -117,32 +148,45 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
         },
       });
 
-      console.log('[Notifications] Response status:', response.status);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Notifications] Error response:', errorText);
         throw new Error(`Failed to fetch notifications: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('[Notifications] Data received:', JSON.stringify(data));
       
+      // Detect new notifications (quelle che non c'erano prima)
+      const currentIds = new Set((data.notifications || []).map(n => n.id));
+      const prevIds = new Set(prevNotificationsRef.current.map(n => n.id));
+      const newlyAdded = new Set([...currentIds].filter(id => !prevIds.has(id)));
+      
+      if (newlyAdded.size > 0) {
+        setNewIds(newlyAdded);
+        // Dopo 1 secondo rimuovi lo stato "new" per le prossime volte
+        setTimeout(() => setNewIds(new Set()), 1000);
+      }
+      
+      prevNotificationsRef.current = data.notifications || [];
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
     } catch (err) {
       console.error('[NotificationsSummary] Error:', err);
-      setError(err.message);
+      // Non mostrare errore se è un refresh in background
+      if (notifications.length === 0) {
+        setError(err.message);
+      }
     } finally {
-      setLoading(false);
+      setIsInitialLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
+    // Caricamento iniziale con loading visibile
+    fetchNotifications(true);
 
-    // Refresh ogni 30 secondi
-    const interval = setInterval(fetchNotifications, 30000);
+    // Refresh ogni 30 secondi - silenzioso, senza loading
+    const interval = setInterval(() => {
+      fetchNotifications(false);
+    }, 30000);
     
     // Realtime subscription per nuove notifiche
     let subscription;
@@ -163,7 +207,8 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
           },
           (payload) => {
             console.log('[Notifications] Realtime new notification:', payload);
-            fetchNotifications(); // Ricarica tutte le notifiche
+            // Ricarica silenziosamente senza mostrare loading
+            fetchNotifications(false);
           }
         )
         .subscribe();
@@ -191,8 +236,8 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
               'Authorization': `Bearer ${session.access_token}`,
             },
           });
-          // Refresh lista
-          fetchNotifications();
+          // Refresh silenzioso
+          fetchNotifications(false);
         }
       } catch (err) {
         console.error('[NotificationsSummary] Mark read error:', err);
@@ -214,19 +259,77 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
         }
         break;
       default:
-        // Naviga alla schermata notifiche completa (se esiste)
         break;
     }
   };
 
   const handleViewAll = () => {
-    // Naviga alla schermata notifiche completa
-    // navigation.navigate('Notifications');
     console.log('[NotificationsSummary] View all pressed');
   };
 
   const handleDismiss = () => {
     setNotifications([]);
+  };
+  
+  const handleRetry = () => {
+    fetchNotifications(true);
+  };
+
+  // Render del contenuto
+  const renderContent = () => {
+    // Solo al primo caricamento mostriamo il loading
+    if (isInitialLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      );
+    }
+    
+    // Errore solo se non abbiamo dati
+    if (error && notifications.length === 0) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle-outline" size={20} color={theme.colors.danger} />
+          <Text style={[styles.errorText, isRTL && styles.rtlText]}>
+            {strings.notifications?.error || 'Errore caricamento'}
+          </Text>
+          <TouchableOpacity onPress={handleRetry}>
+            <Text style={styles.retryText}>
+              {strings.notifications?.retry || 'Riprova'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    // Empty state
+    if (notifications.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="notifications-off-outline" size={24} color={theme.colors.muted} />
+          <Text style={[styles.emptyText, isRTL && styles.rtlText]}>
+            {strings?.empty || 'Nessuna notifica'}
+          </Text>
+        </View>
+      );
+    }
+    
+    // Lista notifiche - sempre visibile, anche durante refresh
+    return (
+      <View style={styles.notificationsList}>
+        {notifications.map((notification) => (
+          <AnimatedNotificationItem
+            key={notification.id}
+            notification={notification}
+            isRTL={isRTL}
+            strings={strings.notifications}
+            onPress={() => handleNotificationPress(notification)}
+            isNew={newIds.has(notification.id)}
+          />
+        ))}
+      </View>
+    );
   };
 
   return (
@@ -262,43 +365,8 @@ const NotificationsSummary = ({ isRTL = false, maxItems = 5 }) => {
         </View>
       </View>
 
-      {/* Content */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
-        </View>
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={20} color={theme.colors.danger} />
-          <Text style={[styles.errorText, isRTL && styles.rtlText]}>
-            {strings.notifications?.error || 'Errore caricamento'}
-          </Text>
-          <TouchableOpacity onPress={fetchNotifications}>
-            <Text style={styles.retryText}>
-              {strings.notifications?.retry || 'Riprova'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : notifications.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="notifications-off-outline" size={24} color={theme.colors.muted} />
-          <Text style={[styles.emptyText, isRTL && styles.rtlText]}>
-            {strings?.empty || 'Nessuna notifica'}
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.notificationsList}>
-          {notifications.map((notification) => (
-            <NotificationItem
-              key={notification.id}
-              notification={notification}
-              isRTL={isRTL}
-              strings={strings.notifications}
-              onPress={() => handleNotificationPress(notification)}
-            />
-          ))}
-        </View>
-      )}
+      {/* Content - sempre renderizzato, mai bloccati da loading */}
+      {renderContent()}
     </View>
   );
 };
@@ -388,6 +456,16 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '600',
   },
+  emptyContainer: {
+    paddingVertical: theme.spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: theme.colors.muted,
+  },
   notificationsList: {
     paddingVertical: theme.spacing.xs,
   },
@@ -433,16 +511,6 @@ const styles = StyleSheet.create({
   rtlText: {
     textAlign: 'right',
     writingDirection: 'rtl',
-  },
-  emptyContainer: {
-    paddingVertical: theme.spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: theme.colors.muted,
   },
 });
 
