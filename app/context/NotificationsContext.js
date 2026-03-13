@@ -14,6 +14,7 @@ const NotificationsContext = createContext({
   refreshNotifications: () => {},
   markAsRead: async () => {},
   markAllAsRead: async () => {},
+  deleteNotification: async () => {},
 });
 
 export const useNotifications = () => useContext(NotificationsContext);
@@ -168,6 +169,41 @@ export const NotificationsProvider = ({ children }) => {
     }
   }, []);
 
+  // Delete notification
+  const deleteNotification = useCallback(async (notificationId) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return false;
+
+      const response = await fetch(`${API_BASE}/api/notifications/${notificationId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+
+      if (response.ok) {
+        // Rimuovi la notifica dallo stato locale
+        setNotifications(prev => {
+          const updated = prev.filter(n => n.id !== notificationId);
+          // Ricalcola conteggi
+          const counts = calculateUnreadCounts(updated);
+          setUnreadCount(counts.total);
+          setUnreadMessages(counts.messages);
+          setUnreadLikes(counts.likes);
+          setUnreadComments(counts.comments);
+          setUnreadFollows(counts.follows);
+          // Aggiorna badge
+          Notifications.setBadgeCountAsync(counts.total);
+          return updated;
+        });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[NotificationsContext] Delete notification error:', err);
+      return false;
+    }
+  }, [calculateUnreadCounts]);
+
   // Setup Realtime
   useEffect(() => {
     let isMounted = true;
@@ -259,6 +295,7 @@ export const NotificationsProvider = ({ children }) => {
     refreshNotifications: fetchNotifications,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     isInitialized,
   };
 
